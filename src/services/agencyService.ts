@@ -34,19 +34,27 @@ export interface ClientInvitation {
  * @returns Whether the user is an agency
  */
 export async function isAgency(userId: string): Promise<boolean> {
-  const { data: subscription, error } = await supabase
-    .from('subscriptions')
-    .select('plan_id')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single();
+  try {
+    const { data: subscription, error } = await supabase
+      .from('subscriptions')
+      .select('plan_type')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .single();
 
-  if (error) {
-    console.error('Error checking if user is an agency:', error);
+    if (error) {
+      console.error('Error checking if user is an agency:', error);
+      if (error.details?.includes('column') || error.message?.includes('column')) {
+        console.error('Schema mismatch detected in subscription query. Check database schema alignment with code.');
+      }
+      return false;
+    }
+
+    return subscription?.plan_type === 'agency';
+  } catch (error) {
+    console.error('Exception checking if user is an agency:', error);
     return false;
   }
-
-  return subscription?.plan_id === 'agency';
 }
 
 /**

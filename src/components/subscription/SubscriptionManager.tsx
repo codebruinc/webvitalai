@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useSubscription } from '@/hooks/useSubscription';
 
 export default function SubscriptionManager() {
@@ -126,9 +127,9 @@ export default function SubscriptionManager() {
       
       <div className="px-4 py-4 sm:px-6 bg-gray-50 border-t border-gray-200">
         <div className="text-sm">
-          <a href="/pricing" className="font-medium text-primary-600 hover:text-primary-500">
+          <Link href="/pricing" className="font-medium text-primary-600 hover:text-primary-500">
             View all pricing plans <span aria-hidden="true">&rarr;</span>
-          </a>
+          </Link>
         </div>
       </div>
     </div>

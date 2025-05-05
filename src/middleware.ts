@@ -4,6 +4,8 @@ import type { NextRequest } from 'next/server';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
+  
+  // Create a Supabase client configured to use cookies
   const supabase = createMiddlewareClient({ req, res });
 
   // Refresh session if expired
@@ -12,16 +14,21 @@ export async function middleware(req: NextRequest) {
   } = await supabase.auth.getSession();
 
   // Protected routes that require authentication
-  const protectedRoutes = ['/dashboard', '/profile', '/settings', '/pricing'];
-  const isProtectedRoute = protectedRoutes.some((route) => 
+  const protectedRoutes = ['/dashboard', '/profile', '/settings', '/pricing', '/reports', '/alerts'];
+  const isProtectedRoute = protectedRoutes.some((route) =>
     req.nextUrl.pathname.startsWith(route)
   );
 
   // Auth routes that should redirect to dashboard if already logged in
   const authRoutes = ['/login', '/signup'];
-  const isAuthRoute = authRoutes.some((route) => 
+  const isAuthRoute = authRoutes.some((route) =>
     req.nextUrl.pathname.startsWith(route)
   );
+
+  // Skip auth check for callback route
+  if (req.nextUrl.pathname.startsWith('/auth/callback')) {
+    return res;
+  }
 
   // Redirect if accessing protected route without session
   if (isProtectedRoute && !session) {
@@ -45,7 +52,10 @@ export const config = {
     '/profile/:path*',
     '/settings/:path*',
     '/pricing',
+    '/reports/:path*',
+    '/alerts/:path*',
     '/login',
     '/signup',
+    '/auth/callback',
   ],
 };

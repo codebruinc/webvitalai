@@ -1,0 +1,55 @@
+/**
+ * Test script for the Lighthouse integration
+ */
+import { runLighthouseAudit } from './lighthouse-wrapper.js';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+// Get the directory name using ES modules approach
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// URL to test
+const testUrl = 'https://example.com';
+
+// Output path for the results
+const outputPath = path.join(__dirname, 'lighthouse-test-result.json');
+
+async function runTest() {
+  console.log('Starting Lighthouse test...');
+  console.log(`Testing URL: ${testUrl}`);
+  
+  try {
+    // Run the Lighthouse audit
+    await runLighthouseAudit(testUrl, outputPath);
+    
+    // Check if the results file exists
+    if (fs.existsSync(outputPath)) {
+      console.log('Lighthouse audit completed successfully!');
+      console.log(`Results saved to: ${outputPath}`);
+      
+      // Read and parse the results
+      const resultJson = fs.readFileSync(outputPath, 'utf8');
+      const result = JSON.parse(resultJson);
+      
+      // Display some basic metrics
+      console.log('\nPerformance Metrics:');
+      console.log(`- Performance Score: ${(result.categories.performance.score * 100).toFixed(0)}`);
+      console.log(`- First Contentful Paint: ${(result.audits['first-contentful-paint'].numericValue / 1000).toFixed(2)}s`);
+      console.log(`- Largest Contentful Paint: ${(result.audits['largest-contentful-paint'].numericValue / 1000).toFixed(2)}s`);
+      console.log(`- Cumulative Layout Shift: ${result.audits['cumulative-layout-shift'].numericValue.toFixed(3)}`);
+      
+      // Clean up the test file
+      fs.unlinkSync(outputPath);
+      console.log('\nTest file cleaned up.');
+    } else {
+      console.error('Error: Results file was not created.');
+    }
+  } catch (error) {
+    console.error('Test failed:', error);
+  }
+}
+
+// Run the test
+runTest();

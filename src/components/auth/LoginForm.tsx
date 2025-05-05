@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -10,7 +10,13 @@ export default function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
   const router = useRouter();
+
+  // Ensure we're only running client-side code after component mounts
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -18,6 +24,11 @@ export default function LoginForm() {
     setLoading(true);
 
     try {
+      // Make sure we're on the client side
+      if (!clientReady) {
+        throw new Error('Client not ready');
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -30,6 +41,7 @@ export default function LoginForm() {
       router.push('/dashboard');
       router.refresh();
     } catch (error: any) {
+      console.error('Login error:', error);
       setError(error.message || 'An error occurred during login');
     } finally {
       setLoading(false);

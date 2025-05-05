@@ -29,7 +29,19 @@ export default function DashboardPage() {
 
     const checkScanStatus = async () => {
       try {
-        const response = await fetch(`/api/scan/status?id=${scanId}`);
+        // Check if we're in development mode
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        
+        // Add testing bypass header in development mode
+        const headers: HeadersInit = {};
+        if (isDevelopment) {
+          console.log('Development mode: Adding testing bypass header');
+          headers['x-testing-bypass'] = 'true';
+        }
+        
+        const response = await fetch(`/api/scan/status?id=${scanId}`, {
+          headers
+        });
         const data = await response.json();
 
         if (!response.ok) {
@@ -41,7 +53,10 @@ export default function DashboardPage() {
 
         // If the scan is completed, get the results
         if (data.data.status === 'completed') {
-          const resultsResponse = await fetch(`/api/scan/results?id=${scanId}`);
+          // Use the same headers for the results request
+          const resultsResponse = await fetch(`/api/scan/results?id=${scanId}`, {
+            headers
+          });
           const resultsData = await resultsResponse.json();
 
           if (!resultsResponse.ok) {

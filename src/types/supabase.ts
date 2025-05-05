@@ -178,7 +178,7 @@ export interface Database {
           user_id: string
           stripe_customer_id: string
           stripe_subscription_id: string
-          plan_id: string
+          plan_type: string
           status: string
           current_period_end: string
         }
@@ -188,7 +188,7 @@ export interface Database {
           user_id: string
           stripe_customer_id: string
           stripe_subscription_id: string
-          plan_id: string
+          plan_type: string
           status: string
           current_period_end: string
         }
@@ -198,7 +198,7 @@ export interface Database {
           user_id?: string
           stripe_customer_id?: string
           stripe_subscription_id?: string
-          plan_id?: string
+          plan_type?: string
           status?: string
           current_period_end?: string
         }

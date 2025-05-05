@@ -53,7 +53,19 @@ export default function UrlForm() {
       // Redirect to the dashboard with the scan ID
       router.push(`/dashboard?scan=${data.data.scan_id}`);
     } catch (error: any) {
-      setError(error.message || 'An error occurred while analyzing the URL');
+      console.error('URL form submission error:', error);
+      
+      // Extract error message with fallback
+      let errorMessage = 'An error occurred while analyzing the URL';
+      
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.response && error.response.data && error.response.data.error) {
+        // Handle structured API error responses
+        errorMessage = error.response.data.error;
+      }
+      
+      setError(errorMessage);
       setIsLoading(false);
     }
   };

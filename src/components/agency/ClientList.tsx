@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { AgencyClient, removeClient } from '@/services/agencyService';
 
 interface ClientListProps {
@@ -194,12 +195,12 @@ export default function ClientList({ clients, onClientRemoved }: ClientListProps
                                   </td>
                                   <td className="relative whitespace-nowrap py-2 pl-3 pr-4 text-right text-xs font-medium sm:pr-6">
                                     {website.lastScanId && (
-                                      <a
+                                      <Link
                                         href={`/dashboard?scan=${website.lastScanId}`}
                                         className="text-primary-600 hover:text-primary-900"
                                       >
                                         View Results
-                                      </a>
+                                      </Link>
                                     )}
                                   </td>
                                 </tr>

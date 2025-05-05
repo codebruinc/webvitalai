@@ -1,0 +1,64 @@
+# Use Node.js 18 as the base image
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json
+COPY package.json package-lock.json ./
+
+# Install dependencies
+RUN npm ci --production
+
+# Install Chrome for Lighthouse
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+# Copy all files
+COPY . .
+
+# Install Lighthouse dependencies in scripts directory
+WORKDIR /app/scripts
+RUN npm ci
+WORKDIR /app
+
+# Make scripts executable
+RUN chmod +x /app/scripts/*.js
+
+# Set environment variables
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+ENV CHROME_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Create a non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+# Create a health check script
+RUN echo 'const http = require("http"); \
+const options = { \
+  host: "localhost", \
+  port: 3000, \
+  timeout: 2000, \
+  path: "/health" \
+}; \
+const request = http.request(options, (res) => { \
+  process.exit(res.statusCode === 200 ? 0 : 1); \
+}); \
+request.on("error", function(err) { \
+  process.exit(1); \
+}); \
+request.end();' > healthcheck.js
+
+# Set the user to non-root
+USER worker
+
+# Set the command to run the worker
+CMD ["node", "worker.js"]

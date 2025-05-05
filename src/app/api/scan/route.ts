@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { Database } from '@/types/supabase';
 import { initiateScan } from '@/services/scanService';
@@ -7,14 +8,75 @@ import { queueScan } from '@/services/queueService';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient<Database>({ cookies });
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+    // Check if we're in testing mode
+    const isTestingMode = process.env.NODE_ENV === 'development' || process.env.TESTING_MODE === 'true';
+    let userId = null;
+    let supabase = null;
+    
+    // TESTING BYPASS: Skip authentication checks when in testing mode
+    if (isTestingMode && request.headers.get('x-testing-bypass') === 'true') {
+      console.log('TESTING MODE: Bypassing authentication for scan API');
+      
+      // Create a Supabase client without authentication
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
       );
+      
+      // Use a test user ID
+      userId = 'test-user-id';
+      console.log('TESTING MODE: Using test user ID:', userId);
+    } else {
+      // PRODUCTION MODE: Normal authentication flow
+      // Get the authorization header
+      const authHeader = request.headers.get('authorization');
+      
+      // Check if we have an authorization header (token-based auth)
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        // Extract the token
+        const token = authHeader.split(' ')[1];
+        
+        // Create a Supabase client with the token
+        supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+          {
+            global: {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
+            }
+          }
+        );
+        
+        // Get the user from the token
+        const { data: { user }, error } = await supabase.auth.getUser();
+        
+        if (error || !user) {
+          console.error('Token authentication error:', error);
+          return NextResponse.json(
+            { error: 'Unauthorized' },
+            { status: 401 }
+          );
+        }
+        
+        userId = user.id;
+        console.log('Authenticated via token for user:', userId);
+      } else {
+        // Cookie-based authentication (default for web app)
+        supabase = createRouteHandlerClient<Database>({ cookies });
+        const { data: { session } } = await supabase.auth.getSession();
+    
+        if (!session) {
+          return NextResponse.json(
+            { error: 'Unauthorized' },
+            { status: 401 }
+          );
+        }
+        
+        userId = session.user.id;
+        console.log('Authenticated via cookie for user:', userId);
+      }
     }
 
     const body = await request.json();
@@ -37,8 +99,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initiate the scan
-    const scanId = await initiateScan(url, session.user.id);
+    // Initiate the scan with the authenticated client
+    const scanId = await initiateScan(url, userId, supabase);
     
     // Queue the scan for processing
     await queueScan(scanId);
@@ -53,9 +115,25 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Scan API error:', error);
+    
+    // Log detailed error information for debugging
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause
+    });
+    
+    // Extract error message with fallback
+    const errorMessage = error.message || 'An unexpected error occurred';
+    
+    // Determine if this is a client error (4xx) or server error (5xx)
+    const statusCode = errorMessage.includes('Invalid URL') ||
+                      errorMessage.includes('URL is required') ? 400 : 500;
+    
     return NextResponse.json(
-      { error: error.message || 'An unexpected error occurred' },
-      { status: 500 }
+      { error: errorMessage },
+      { status: statusCode }
     );
   }
 }
@@ -63,14 +141,76 @@ export async function POST(request: NextRequest) {
 // GET endpoint to retrieve scan results
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient<Database>({ cookies });
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+    // Check if we're in testing mode
+    const isTestingMode = process.env.NODE_ENV === 'development' || process.env.TESTING_MODE === 'true';
+    let userId = null;
+    let supabase = null;
+    
+    // TESTING BYPASS: Skip authentication checks when in testing mode
+    if (isTestingMode && request.headers.get('x-testing-bypass') === 'true') {
+      console.log('TESTING MODE: Bypassing authentication for scan API GET endpoint');
+      
+      // Create a Supabase client without authentication
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
       );
+      
+      // Use a real user ID that exists in the database
+      // This hardcoded ID comes from test-scan-with-user.js which is known to work
+      userId = '8ff0950a-c73d-4efc-8b73-56205b8035e0';
+      console.log('TESTING MODE: Using real test user ID:', userId);
+    } else {
+      // PRODUCTION MODE: Normal authentication flow
+      // Get the authorization header
+      const authHeader = request.headers.get('authorization');
+      
+      // Check if we have an authorization header (token-based auth)
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        // Extract the token
+        const token = authHeader.split(' ')[1];
+        
+        // Create a Supabase client with the token
+        supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+          {
+            global: {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
+            }
+          }
+        );
+        
+        // Get the user from the token
+        const { data: { user }, error } = await supabase.auth.getUser();
+        
+        if (error || !user) {
+          console.error('Token authentication error:', error);
+          return NextResponse.json(
+            { error: 'Unauthorized' },
+            { status: 401 }
+          );
+        }
+        
+        userId = user.id;
+        console.log('Authenticated via token for user:', userId);
+      } else {
+        // Cookie-based authentication (default for web app)
+        supabase = createRouteHandlerClient<Database>({ cookies });
+        const { data: { session } } = await supabase.auth.getSession();
+    
+        if (!session) {
+          return NextResponse.json(
+            { error: 'Unauthorized' },
+            { status: 401 }
+          );
+        }
+        
+        userId = session.user.id;
+        console.log('Authenticated via cookie for user:', userId);
+      }
     }
 
     // Get the scan ID from the URL
@@ -84,7 +224,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify the user has access to this scan
+    // Get the scan data
     const { data: scan, error: scanError } = await supabase
       .from('scans')
       .select('id, status, error, completed_at, website_id, websites(user_id)')
@@ -98,14 +238,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if the user owns the website
-    const websiteUserId = (scan.websites as any).user_id;
+    // Check if the testing bypass header is present
+    const isTestingBypass = request.headers.get('x-testing-bypass') === 'true';
     
-    if (websiteUserId !== session.user.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
+    // TESTING BYPASS: Skip ownership verification in testing mode
+    if (!(isTestingMode && isTestingBypass)) {
+      // PRODUCTION MODE: Verify the user has access to this scan
+      // Check if the user owns the website
+      const websiteUserId = (scan.websites as any).user_id;
+      
+      if (websiteUserId !== userId) {
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 403 }
+        );
+      }
+    } else {
+      console.log('TESTING MODE: Bypassing ownership verification for scan');
     }
 
     // Return the scan status
@@ -121,9 +270,25 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Scan API error:', error);
+    
+    // Log detailed error information for debugging
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause
+    });
+    
+    // Extract error message with fallback
+    const errorMessage = error.message || 'An unexpected error occurred';
+    
+    // Determine if this is a client error (4xx) or server error (5xx)
+    const statusCode = errorMessage.includes('not found') ? 404 :
+                      errorMessage.includes('Unauthorized') ? 401 : 500;
+    
     return NextResponse.json(
-      { error: error.message || 'An unexpected error occurred' },
-      { status: 500 }
+      { error: errorMessage },
+      { status: statusCode }
     );
   }
 }

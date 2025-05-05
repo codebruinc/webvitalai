@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -12,7 +12,13 @@ export default function SignupForm() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
   const router = useRouter();
+
+  // Ensure we're only running client-side code after component mounts
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,6 +39,11 @@ export default function SignupForm() {
     setLoading(true);
 
     try {
+      // Make sure we're on the client side
+      if (!clientReady) {
+        throw new Error('Client not ready');
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -40,6 +51,7 @@ export default function SignupForm() {
           data: {
             full_name: name,
           },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
@@ -47,9 +59,13 @@ export default function SignupForm() {
         throw error;
       }
 
+      // Store email in localStorage for the confirmation page
+      localStorage.setItem('signupEmail', email);
+
       // Redirect to confirmation page
       router.push('/signup/confirmation');
     } catch (error: any) {
+      console.error('Signup error:', error);
       setError(error.message || 'An error occurred during signup');
     } finally {
       setLoading(false);
