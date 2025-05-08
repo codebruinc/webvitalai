@@ -36,6 +36,7 @@ This document tracks the architectural patterns, design decisions, and coding st
 [2025-05-04 18:10:45] - **External API Integration**: Using service modules for external API integration.
 [2025-05-04 18:10:45] - **Authentication**: Using Supabase Auth for authentication.
 [2025-05-04 18:10:45] - **Database Access**: Using Supabase client for database access.
+[2025-05-06 14:18:58] - **Service Role Access**: Using service role client to bypass RLS policies for critical operations.
 [2025-05-04 18:10:45] - **Payment Processing**: Using Stripe for payment processing.
 [2025-05-04 18:40:00] - **Subscription Management**: Using Stripe for subscription lifecycle management with webhook handling.
 [2025-05-04 18:10:45] - **Background Jobs**: Using scheduled jobs for automated tasks.
@@ -48,6 +49,10 @@ This document tracks the architectural patterns, design decisions, and coding st
 [2025-05-04 18:30:00] - **Retry Mechanism**: Implementing automatic retries for failed jobs.
 [2025-05-04 18:30:00] - **Error Handling**: Comprehensive error handling for external API calls.
 [2025-05-04 18:30:00] - **Result Normalization**: Normalizing results from different APIs into a consistent format.
+[2025-05-06 14:18:58] - **Multi-Level Fallback**: Implementing progressive fallback mechanisms for critical operations, starting with standard approaches and falling back to more privileged methods when needed.
+[2025-05-07 08:33:00] - **Enhanced Redis Connection**: Implementing robust Redis connection handling with proper TLS configuration, environment variable support, and detailed error diagnostics.
+[2025-05-07 09:24:00] - **Redis Connection Strategy**: Using non-TLS connections for Redis Cloud instances that don't support TLS, with automatic detection based on the hostname and comprehensive fallback mechanisms.
+[2025-05-07 15:33:00] - **Multi-Method Execution Pattern**: Implementing a progressive approach to critical operations by providing multiple implementation methods with automatic fallback. This pattern tries more sophisticated methods first (e.g., Supabase CLI) and falls back to simpler methods (e.g., direct database connection, JavaScript client, manual instructions) if earlier methods fail, ensuring robustness across different environments.
 
 ## AI Integration Patterns
 [2025-05-04 18:30:00] - **Prompt Engineering**: Crafting effective prompts for OpenAI API.
@@ -66,3 +71,4 @@ This document tracks the architectural patterns, design decisions, and coding st
 [2025-05-04 18:10:45] - Added architectural patterns, design patterns, coding standards, data flow patterns, and integration patterns
 [2025-05-04 18:30:00] - Added job queue, API orchestration, tiered access, processing patterns, and AI integration patterns
 [2025-05-04 18:40:00] - Added subscription patterns and updated integration patterns
+[2025-05-06 14:18:58] - Added multi-level fallback pattern for critical operations

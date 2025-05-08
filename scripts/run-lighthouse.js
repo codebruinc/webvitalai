@@ -70,10 +70,25 @@ async function runLighthouse() {
   // Import modules dynamically
   const { lighthouse, chromeLauncher } = await importModules();
   
-  // Launch Chrome
-  const chrome = await chromeLauncher.launch({
-    chromeFlags: ['--headless', '--disable-gpu', '--no-sandbox'],
-  });
+  // Check if we're in testing mode
+  const isTestingMode = process.env.NODE_ENV === 'development' || process.env.TESTING_MODE === 'true';
+  
+  // Launch Chrome using environment variable or auto-detect
+  const chromeFlags = ['--headless', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'];
+  const launchOptions = { chromeFlags };
+  
+  // Use environment variable if set
+  if (process.env.CHROME_PATH) {
+    console.log(`Using Chrome at: ${process.env.CHROME_PATH}`);
+    launchOptions.chromePath = process.env.CHROME_PATH;
+  } else if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    console.log(`Using Puppeteer's Chrome at: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+    launchOptions.chromePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  } else {
+    console.log('Using auto-detected Chrome');
+  }
+  
+  const chrome = await chromeLauncher.launch(launchOptions);
 
   try {
     // Run Lighthouse

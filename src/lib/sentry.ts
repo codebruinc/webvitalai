@@ -11,17 +11,8 @@ export function initSentry() {
     Sentry.init({
       dsn: SENTRY_DSN,
       environment: process.env.NODE_ENV,
+      // Sample rate for performance monitoring
       tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
-      integrations: [
-        new Sentry.Integrations.Http({ tracing: true }),
-        new Sentry.Integrations.Express(),
-        new Sentry.Integrations.Postgres(),
-      ],
-      // Performance monitoring
-      enableTracing: true,
-      // Session replay for debugging UI issues
-      replaysSessionSampleRate: 0.1,
-      replaysOnErrorSampleRate: 1.0,
     });
   } else {
     console.warn('Sentry DSN not provided. Error tracking is disabled.');
@@ -60,22 +51,6 @@ export function clearUser() {
   if (SENTRY_DSN) {
     Sentry.setUser(null);
   }
-}
-
-/**
- * Start a new transaction for performance monitoring
- * @param name Transaction name
- * @param op Operation type
- * @returns Transaction object
- */
-export function startTransaction(name: string, op: string) {
-  if (SENTRY_DSN) {
-    return Sentry.startTransaction({
-      name,
-      op,
-    });
-  }
-  return null;
 }
 
 /**

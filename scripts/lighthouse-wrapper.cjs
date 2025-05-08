@@ -19,15 +19,19 @@ function runLighthouseAudit(url, outputPath) {
     // Determine the script path with better error handling
     let scriptPath;
     try {
-      // First try the standard path
-      scriptPath = path.resolve(__dirname, 'run-lighthouse.js');
+      // First try the standard path with .cjs extension
+      scriptPath = path.resolve(__dirname, 'run-lighthouse.cjs');
       
       // Check if the file exists
       if (!require('fs').existsSync(scriptPath)) {
         // Try alternative paths if the file doesn't exist
         const altPaths = [
+          path.resolve(__dirname, 'run-lighthouse.js'), // Fallback to .js version
+          path.resolve(process.cwd(), 'scripts', 'run-lighthouse.cjs'),
           path.resolve(process.cwd(), 'scripts', 'run-lighthouse.js'),
+          path.resolve(process.cwd(), 'src', 'scripts', 'run-lighthouse.cjs'),
           path.resolve(process.cwd(), 'src', 'scripts', 'run-lighthouse.js'),
+          path.resolve(__dirname, '..', 'scripts', 'run-lighthouse.cjs'),
           path.resolve(__dirname, '..', 'scripts', 'run-lighthouse.js')
         ];
         

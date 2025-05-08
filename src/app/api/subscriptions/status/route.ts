@@ -4,6 +4,9 @@ import { cookies } from 'next/headers';
 import { Database } from '@/types/supabase';
 import { getCustomerSubscription } from '@/services/stripeService';
 
+// Force dynamic rendering for this route since it uses cookies
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     // Create a Supabase server client

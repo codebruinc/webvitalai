@@ -11,14 +11,20 @@ COPY package.json package-lock.json ./
 # Install dependencies
 RUN npm ci
 
-# Install Chrome for Lighthouse
+# Install Chrome for Lighthouse with additional dependencies for Render
 RUN apk add --no-cache \
     chromium \
     nss \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    dbus \
+    udev \
+    ttf-opensans \
+    ttf-dejavu \
+    font-noto-emoji \
+    fontconfig
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -37,13 +43,20 @@ WORKDIR /app
 
 # Make scripts executable
 RUN chmod +x /app/scripts/*.js
+RUN chmod +x /app/scripts/*.cjs
 
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NODE_ENV production
+
+# Puppeteer/Chrome configuration for Render
 ENV CHROME_PATH=/usr/bin/chromium-browser
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Render-specific configuration
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_CACHE_DIR=/tmp/puppeteer-cache
 
 # Build the application
 RUN npm run build
@@ -55,18 +68,33 @@ WORKDIR /app
 # Set environment variables
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
+
+# Puppeteer/Chrome configuration for Render
 ENV CHROME_PATH=/usr/bin/chromium-browser
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
-# Install Chrome for Lighthouse
+# Render-specific configuration
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_CACHE_DIR=/tmp/puppeteer-cache
+
+# Install Chrome for Lighthouse with additional dependencies for Render
 RUN apk add --no-cache \
     chromium \
     nss \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    dbus \
+    udev \
+    ttf-opensans \
+    ttf-dejavu \
+    font-noto-emoji \
+    fontconfig
+
+# Create cache directory for Puppeteer
+RUN mkdir -p /tmp/puppeteer-cache && chmod -R 777 /tmp/puppeteer-cache
 
 # Create a non-root user
 RUN addgroup --system --gid 1001 nodejs
@@ -90,5 +118,5 @@ USER nextjs
 # Expose the port
 EXPOSE 3000
 
-# Set the command
-CMD ["node", "server.js"]
+# Set the command - run setup script first, then start the server
+CMD ["sh", "-c", "node ./scripts/setup-render.js && node server.js"]

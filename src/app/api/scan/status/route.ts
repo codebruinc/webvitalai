@@ -3,6 +3,10 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { Database } from '@/types/supabase';
 import { getScanJobStatus } from '@/services/queueService';
+import { supabase, supabaseServiceRole } from '@/lib/supabase';
+
+// Force dynamic rendering for this route since it uses request.headers
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,8 +26,16 @@ export async function GET(request: NextRequest) {
     }
     
     // TESTING BYPASS: Return mock data for scan status in testing mode
-    if (isTestingMode && isTestingBypass) {
-      console.log('TESTING MODE: Bypassing database lookup for scan status API');
+    if (isTestingBypass) {
+      if (isTestingMode) {
+        console.log('Bypassing database lookup for scan status API (testing mode)');
+      } else {
+        console.error('Attempted to use testing bypass in production mode');
+        return NextResponse.json(
+          { error: 'Testing bypass not allowed in production mode' },
+          { status: 403 }
+        );
+      }
       
       // Return mock scan status data
       return NextResponse.json({
@@ -50,7 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify the user has access to this scan
-    const { data: scan, error: scanError } = await supabase
+    const { data: scan, error: scanError } = await supabaseServiceRole
       .from('scans')
       .select('id, status, error, completed_at, website_id, websites(user_id)')
       .eq('id', scanId)
@@ -60,7 +72,7 @@ export async function GET(request: NextRequest) {
     if (scanError || !scan) {
       // Check if we're in testing mode (without bypass header)
       if (isTestingMode) {
-        console.log('TESTING MODE: Scan not found in database, returning mock data');
+        console.log('Scan not found in database, returning mock data (testing mode)');
         
         // Return mock scan status data
         return NextResponse.json({
@@ -122,7 +134,7 @@ export async function GET(request: NextRequest) {
 
     // Update the scan status in the database if it has changed
     if (scanStatus !== scan.status) {
-      await supabase
+      await supabaseServiceRole
         .from('scans')
         .update({
           status: scanStatus,

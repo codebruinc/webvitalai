@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { Database } from '@/types/supabase';
-import { getScanResult } from '@/services/scanService';
+import { getScanResults } from '@/services/scanService';
 // Import the mockScanUrls map
 import { mockScanUrls } from '@/services/scanService';
+import { supabase, supabaseServiceRole } from '@/lib/supabase';
+
+// Force dynamic rendering for this route since it uses request.headers
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,74 +29,21 @@ export async function GET(request: NextRequest) {
     
     // TESTING BYPASS: Return mock data for scan results in testing mode
     if (isTestingMode && isTestingBypass) {
-      console.log('TESTING MODE: Bypassing database lookup for scan results API');
+      console.log('Bypassing database lookup for scan results API (testing mode)');
       
-      // Get the URL from the mockScanUrls map or use a default
-      const url = mockScanUrls.get(scanId) || 'https://example.com';
-      console.log('TESTING MODE: Using URL for mock scan results:', url);
+      // Use the getScanResult function which now handles mock scan IDs
+      const scanResult = await getScanResults(scanId);
       
-      // Return mock scan results data
-      const mockScanResult = {
-        id: scanId,
-        url: url,
-        status: 'completed',
-        performance: {
-          score: 85,
-          metrics: {
-            'First Contentful Paint': { value: 1.2, unit: 's' },
-            'Largest Contentful Paint': { value: 2.5, unit: 's' },
-            'Total Blocking Time': { value: 150, unit: 'ms' },
-            'Cumulative Layout Shift': { value: 0.05 }
-          }
-        },
-        accessibility: {
-          score: 92,
-          issues: [
-            { title: 'Images must have alternate text', description: 'Provide alt text for images', severity: 'medium' }
-          ]
-        },
-        seo: {
-          score: 88,
-          issues: [
-            { title: 'Document does not have a meta description', description: 'Add a meta description', severity: 'medium' }
-          ]
-        },
-        bestPractices: {
-          score: 90,
-          issues: []
-        },
-        security: {
-          score: 75,
-          grade: 'B',
-          issues: [
-            { title: 'Missing Content-Security-Policy header', description: 'Add CSP header', severity: 'high' }
-          ]
-        },
-        recommendations: [
-          {
-            issueId: 'rec-1',
-            description: 'Optimize images to improve load time',
-            priority: 'high',
-            implementationDetails: 'Use WebP format and compress images',
-            impact: 8,
-            effort: 3,
-            priorityScore: 8.5
-          },
-          {
-            issueId: 'rec-2',
-            description: 'Add alt text to all images',
-            priority: 'medium',
-            implementationDetails: 'Ensure all <img> tags have descriptive alt attributes',
-            impact: 6,
-            effort: 2,
-            priorityScore: 7.0
-          }
-        ]
-      };
+      if (!scanResult) {
+        return NextResponse.json(
+          { error: 'Scan result not found' },
+          { status: 404 }
+        );
+      }
       
       return NextResponse.json({
         success: true,
-        data: mockScanResult,
+        data: scanResult,
         isPremium: true,
       });
     }
@@ -109,7 +60,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify the user has access to this scan
-    const { data: scan, error: scanError } = await supabase
+    const { data: scan, error: scanError } = await supabaseServiceRole
       .from('scans')
       .select('id, website_id, websites(user_id)')
       .eq('id', scanId)
@@ -119,83 +70,28 @@ export async function GET(request: NextRequest) {
     if (scanError || !scan) {
       // Check if we're in testing mode (without bypass header)
       if (isTestingMode) {
-        console.log('TESTING MODE: Scan not found in database, returning mock data');
+        console.log('Scan not found in database, checking for mock scan (testing mode)');
         
-        // Get the URL from the mockScanUrls map or use a default
-        const url = mockScanUrls.get(scanId) || 'https://example.com';
-        console.log('TESTING MODE: Using URL for mock scan results:', url);
+        // Use the getScanResult function which now handles mock scan IDs
+        const scanResult = await getScanResults(scanId);
         
-        // Return mock scan results data (same as above)
-        const mockScanResult = {
-          id: scanId,
-          url: url,
-          status: 'completed',
-          performance: {
-            score: 85,
-            metrics: {
-              'First Contentful Paint': { value: 1.2, unit: 's' },
-              'Largest Contentful Paint': { value: 2.5, unit: 's' },
-              'Total Blocking Time': { value: 150, unit: 'ms' },
-              'Cumulative Layout Shift': { value: 0.05 }
-            }
-          },
-          accessibility: {
-            score: 92,
-            issues: [
-              { title: 'Images must have alternate text', description: 'Provide alt text for images', severity: 'medium' }
-            ]
-          },
-          seo: {
-            score: 88,
-            issues: [
-              { title: 'Document does not have a meta description', description: 'Add a meta description', severity: 'medium' }
-            ]
-          },
-          bestPractices: {
-            score: 90,
-            issues: []
-          },
-          security: {
-            score: 75,
-            grade: 'B',
-            issues: [
-              { title: 'Missing Content-Security-Policy header', description: 'Add CSP header', severity: 'high' }
-            ]
-          },
-          recommendations: [
-            {
-              issueId: 'rec-1',
-              description: 'Optimize images to improve load time',
-              priority: 'high',
-              implementationDetails: 'Use WebP format and compress images',
-              impact: 8,
-              effort: 3,
-              priorityScore: 8.5
-            },
-            {
-              issueId: 'rec-2',
-              description: 'Add alt text to all images',
-              priority: 'medium',
-              implementationDetails: 'Ensure all <img> tags have descriptive alt attributes',
-              impact: 6,
-              effort: 2,
-              priorityScore: 7.0
-            }
-          ]
-        };
-        
-        return NextResponse.json({
-          success: true,
-          data: mockScanResult,
-          isPremium: true,
-        });
-      } else {
-        // In production mode, return 404
-        return NextResponse.json(
-          { error: 'Scan not found' },
-          { status: 404 }
-        );
+        if (scanResult) {
+          console.log('Found mock scan data (testing mode)');
+          return NextResponse.json({
+            success: true,
+            data: scanResult,
+            isPremium: true,
+          });
+        } else {
+          console.log('No mock scan data found (testing mode)');
+        }
       }
+      
+      // In production mode or if no mock data found, return 404
+      return NextResponse.json(
+        { error: 'Scan not found' },
+        { status: 404 }
+      );
     }
 
     // Check if the user owns the website
@@ -209,7 +105,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the scan result
-    const scanResult = await getScanResult(scanId);
+    const scanResult = await getScanResults(scanId);
 
     if (!scanResult) {
       return NextResponse.json(
@@ -219,7 +115,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if the user has a premium subscription
-    const { data: subscription } = await supabase
+    const { data: subscription } = await supabaseServiceRole
       .from('subscriptions')
       .select('plan_type, status')
       .eq('user_id', session.user.id)

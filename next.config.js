@@ -1,16 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Explicitly expose environment variables to the client
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  },
   reactStrictMode: true,
   swcMinify: true,
   images: {
     domains: ['localhost', 'webvitalai.com', 'www.webvitalai.com'],
     unoptimized: process.env.NODE_ENV === 'development',
   },
-  experimental: {
-    serverActions: true,
-  },
-  // Enable output standalone for containerized deployments
-  output: process.env.STANDALONE === 'true' ? 'standalone' : undefined,
+  // Server Actions are available by default in Next.js 14+
+  // Disable static exports
+  output: undefined,
   // Enable compression
   compress: true,
   // Configure headers for security

@@ -107,7 +107,7 @@ Format your response as JSON with the following structure:
         {
           role: 'system',
           content:
-            'You are WebVitalAI, an expert assistant that provides detailed recommendations for web performance, accessibility, SEO, and security issues.',
+            'You are WebVitalAI, an expert assistant that provides detailed recommendations for web performance, accessibility, SEO, and security issues. Always respond with valid JSON.',
         },
         {
           role: 'user',
@@ -115,7 +115,7 @@ Format your response as JSON with the following structure:
         },
       ],
       temperature: 0.5,
-      response_format: { type: 'json_object' },
+      // Removed response_format parameter as it may not be supported by all GPT-4 deployments
     });
 
     // Parse the response

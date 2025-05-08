@@ -200,6 +200,22 @@ Each entry should include:
 - Implications: Consistent database schema that matches the code, elimination of 500 errors, improved reliability
 - Stakeholders: Development team, users
 - Stakeholders: Development team, users
+
+[2025-05-06 11:15:37] - **Comprehensive Fix for "Analyze Website" Function**
+- Decision: Created a comprehensive fix-all.sh script that combines the dynamic server usage fix and RLS policy fix
+- Rationale: Two separate issues were causing the "analyze website" function to fail:
+  1. Next.js API routes needed dynamic rendering configuration
+  2. Row-level security policies were missing for the scans table
+- Alternatives:
+  - Applying fixes separately (more error-prone and time-consuming)
+  - Rewriting the scan functionality to avoid these issues (too invasive)
+  - Disabling RLS for the scans table (security risk)
+- Implications:
+  - Simplified fix application process with a single script
+  - Comprehensive documentation for future reference
+  - Improved reliability of the core "analyze website" function
+  - Better security with proper RLS policies in place
+- Stakeholders: Development team, users
 [2025-05-05 15:23:50] - Fixed row-level security policy error in scan API by modifying the `initiateScan` function to accept a client parameter and updating the API route to pass its authenticated client. This ensures that database operations in the scan service use the properly authenticated client when called from API routes.
 
 [2025-05-05 17:26:00] - **Authentication Bypass for Testing**
@@ -214,3 +230,83 @@ Each entry should include:
   - Clear separation between production and testing code paths
   - Potential security risk if testing bypass is enabled in production (mitigated by environment checks)
 - Stakeholders: Development team, QA team
+
+[2025-05-06 10:55:00] - **Dashboard Dynamic Rendering Configuration**
+- Decision: Configured the dashboard page as a dynamic route by adding `export const dynamic = 'force-dynamic'` to both page.tsx and layout.tsx
+- Rationale: The dashboard contains dynamic data from user URL submissions and was incorrectly being treated as a static page during production builds
+- Alternatives:
+  - Using getServerSideProps (not available in App Router)
+  - Implementing a custom caching strategy
+  - Moving all data fetching to client-side only (would impact SEO and initial load performance)
+- Implications:
+  - Ensures the dashboard always shows fresh, user-specific data
+  - Prevents build-time errors when trying to statically generate pages with dynamic data
+  - Slightly increased server load due to dynamic rendering instead of static generation
+- Stakeholders: Development team, users
+[2025-05-06 14:18:07] - **RLS Bypass Strategy for Scan Creation**
+- Decision: Implement a multi-layered approach to bypass RLS policies for scan creation
+- Rationale: Previous attempts to fix RLS policies were unsuccessful due to foreign key constraint violations and missing exec_sql function. A robust solution with multiple fallback mechanisms was needed.
+- Alternatives:
+  - Continuing to try SQL-based fixes (not viable due to missing exec_sql function)
+  - Disabling RLS entirely (security risk)
+  - Rewriting the scan functionality from scratch (too time-consuming)
+- Implications:
+  - Added a service role client that bypasses RLS policies
+  - Enhanced scan service with multi-level fallback mechanisms
+  - Created a database function with SECURITY DEFINER to bypass RLS completely
+  - Implemented detailed logging to identify failure points
+  - Added comprehensive testing and application scripts
+- Stakeholders: Development team, users
+[2025-05-06 19:28:14] - Implemented a fallback mechanism in src/lib/supabase.ts for the service role client. If the SUPABASE_SERVICE_ROLE_KEY is not available, the service role client will fall back to using the admin client. This ensures the application can still function even if the service role key is not properly configured, though with potentially limited permissions.
+
+[2025-05-07 08:33:00] - **Redis SSL Connection Fix**
+- Decision: Updated Redis connection handling in queueService.ts to properly support TLS connections to Redis Cloud
+- Rationale: The previous configuration was causing SSL errors (`ERR_SSL_PACKET_LENGTH_TOO_LONG`) due to incorrect TLS configuration and hardcoded credentials
+- Alternatives:
+  - Using a different queue library (would require significant code changes)
+  - Disabling TLS for Redis connections (security risk)
+  - Using a different Redis provider (migration effort)
+- Implications:
+  - More reliable Redis connections with proper TLS support
+  - Better error handling and diagnostics for SSL-related issues
+  - Support for both URL-based and parameter-based Redis connections
+  - Improved environment variable handling for Redis configuration
+- Stakeholders: Development team, operations team, users
+
+[2025-05-07 09:23:00] - **Redis Non-TLS Connection Fix**
+- Decision: Updated Redis connection configuration to use non-TLS connections instead of TLS for Redis Cloud
+- Rationale: Testing revealed that the Redis instance is configured for non-TLS connections, as all TLS connection attempts failed with `ERR_SSL_PACKET_LENGTH_TOO_LONG` errors, while non-TLS connections succeeded
+- Alternatives:
+  - Continuing to try different TLS configurations (not viable as all TLS attempts failed)
+  - Reconfiguring Redis Cloud to use TLS (would require Redis Cloud admin access)
+  - Using a different Redis provider (migration effort)
+- Implications:
+  - More reliable Redis connections without SSL errors
+  - Simplified connection configuration
+  - Potentially reduced security if the Redis connection is over public internet (mitigated by password authentication)
+[2025-05-07 15:33:00] - **Multi-Method Approach for RLS Policy Application**
+- Decision: Created multiple scripts using different methods to apply RLS policy fixes for metrics and issues tables
+- Rationale: The original approach using the Supabase CLI's `sql` command was failing with "unknown command" errors. A more robust solution was needed that would work across different environments.
+- Alternatives:
+  - Continuing to use only the Supabase CLI (unreliable if CLI is not properly installed)
+  - Using only a direct PostgreSQL connection (requires pg module)
+  - Using only the Supabase JavaScript client (requires exec_sql function)
+  - Providing only manual instructions (requires user intervention)
+- Implications:
+  - More robust solution that works across different environments
+  - Progressive fallback to simpler methods if more advanced methods fail
+  - Better user experience with clear feedback and instructions
+  - Increased code maintenance with multiple scripts to maintain
+- Stakeholders: Development team, operations team, users
+[2025-05-07 15:55:00] - **Use .cjs Files Instead of .js Files**
+- Decision: Use .cjs file extension for CommonJS modules instead of .js
+- Rationale: The project setup requires CommonJS modules for certain scripts, and .cjs explicitly indicates CommonJS format
+- Alternatives: 
+  - Continue using .js files (causes issues with ESM/CommonJS detection)
+  - Convert all scripts to ESM format (would require significant refactoring)
+- Implications:
+  - More explicit module format identification
+  - Better compatibility with the project's module system
+  - Improved reliability for scripts that need to run in Node.js environments
+- Stakeholders: Development team, operations team
+- Stakeholders: Development team, operations team, users

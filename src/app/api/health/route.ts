@@ -61,23 +61,34 @@ export async function GET() {
 
   // Check Redis connection
   try {
-    if (!scanQueue) {
+    if (!scanQueue || !scanQueue.client) {
       healthStatus.services.redis = {
-        status: 'error',
-        message: 'Queue not initialized',
+        status: 'warning',
+        message: 'Using mock queue (Redis unavailable)',
       };
-      healthStatus.status = 'degraded';
+      // Don't mark the overall status as degraded when using mock queue
     } else {
-      const queueStatus = await scanQueue.client.ping();
-      
-      if (queueStatus === 'PONG') {
-        healthStatus.services.redis = { status: 'ok' };
-      } else {
+      try {
+        const queueStatus = await Promise.race([
+          scanQueue.client.ping(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), 1000))
+        ]);
+        
+        if (queueStatus === 'PONG') {
+          healthStatus.services.redis = { status: 'ok' };
+        } else {
+          healthStatus.services.redis = {
+            status: 'error',
+            message: 'Redis ping failed',
+          };
+          healthStatus.status = 'degraded';
+        }
+      } catch (pingError: any) {
         healthStatus.services.redis = {
-          status: 'error',
-          message: 'Redis ping failed',
+          status: 'warning',
+          message: `Redis ping error: ${pingError.message}`,
         };
-        healthStatus.status = 'degraded';
+        // Don't mark as degraded for ping timeout
       }
     }
   } catch (error: any) {

@@ -163,3 +163,25 @@ Each entry should include:
 [2025-05-05 17:27:00] - **Authentication Bypass for Testing**
 - Status: Completed
 - Notes: Implemented a testing bypass for the scan API authentication flow to resolve JWT validation errors during testing. Modified both the scan API route and scanService to skip authentication checks when in development mode or when a specific testing flag is set. Created a test script (test-scan-api-bypass.js) to demonstrate how to use the testing bypass.
+[2025-05-06 14:18:34] - **RLS Bypass Solution Implementation**
+- Status: Completed
+- Notes: Implemented a comprehensive solution to bypass RLS policies for scan creation. Modified src/lib/supabase.ts to add a service role client, enhanced src/services/scanService.ts with multi-level fallback mechanisms, updated src/app/api/scan/route.ts to use the service role client when needed, and created a database function with SECURITY DEFINER to bypass RLS completely. Also created comprehensive testing and application scripts, and added detailed documentation.
+[2025-05-06 19:28:26] - Fixed the "supabaseKey is required" error by implementing validation and fallback mechanism for the service role client in src/lib/supabase.ts. The fix ensures that if the SUPABASE_SERVICE_ROLE_KEY is not available, the application will fall back to using the admin client, preventing crashes while providing a warning in the logs.
+[2025-05-07 08:33:00] - **Redis SSL Connection Fix**
+- Status: Completed
+- Notes: Fixed Redis SSL connection issues by updating queueService.ts to properly handle TLS connections to Redis Cloud. Created diagnostic tools (test-redis-connection.js) and a fix script (fix-redis-ssl.js) to help users resolve Redis connection issues. Added comprehensive documentation in docs/redis-ssl-troubleshooting.md.
+
+[2025-05-07 09:24:00] - **Redis Non-TLS Connection Fix**
+- Status: Completed
+- Notes: Updated Redis connection configuration to use non-TLS connections instead of TLS for Redis Cloud, as testing revealed that the Redis instance is configured for non-TLS connections. Modified queueService.ts, test-redis-connection.js, fix-redis-ssl.js, and documentation to reflect this change. This should resolve the persistent `ERR_SSL_PACKET_LENGTH_TOO_LONG` errors.
+[2025-05-07 12:12:26] - Fixed type error in src/services/scanService.ts that was preventing the build from completing. The issue was that scanData.websites is an array, but the code was trying to access user_id directly on the array instead of on an element of the array. Fixed by changing scanData.websites?.user_id to scanData.websites?.[0]?.user_id.
+[2025-05-07 15:34:00] - **RLS Policy Fix for Metrics and Issues Tables**
+- Status: Completed
+- Notes: Fixed the issue with applying RLS policy fixes to metrics and issues tables by creating multiple robust scripts that use different methods to apply the SQL fixes. Created apply-metrics-issues-cli.cjs (Supabase CLI), apply-metrics-issues-fix.cjs (direct PostgreSQL), apply-metrics-issues-supabase.cjs (Supabase JS client), apply-metrics-issues-manual.cjs (manual instructions), and apply-rls-fix.js (wrapper script). Updated fix-production-mode.cjs to use these new scripts. Added comprehensive documentation in RLS-METRICS-ISSUES-FIX-README.md. This ensures that authenticated users with premium access can properly access their metrics and issues data.
+
+[2025-05-07 15:51:00] - **Chromium/Puppeteer Fix for Render Hosting**
+- Status: Completed
+[2025-05-07 15:56:00] - **Chromium Path Fix for Production Environment**
+- Status: Completed
+- Notes: Fixed the issue with Puppeteer not finding Chromium in production environment by creating proper .cjs scripts (set-chromium-path.cjs and install-puppeteer-deps.cjs) to replace the .js versions. Updated the .puppeteerrc.cjs configuration to better handle production environments where Chromium might not be available at the expected path. Added a decision log entry to document the requirement to use .cjs files instead of .js files for Node.js scripts in this project.
+- Notes: Fixed Chromium/Puppeteer-related errors for Render hosting by implementing a comprehensive solution that uses Puppeteer's bundled Chromium with Render-specific configuration. Updated axeService.ts and lighthouseService.ts with fallback mechanisms for production environments, modified run-lighthouse.js to use environment variables, created .puppeteerrc.cjs for Puppeteer configuration, updated Dockerfile with necessary dependencies for Chromium on Alpine Linux, created render.yaml and .buildpacks for Render configuration, and added scripts for setup and testing. Created comprehensive documentation in docs/deployment/render-deployment.md and added a verification script (verify-chromium-setup.js) to help troubleshoot Chromium issues. This ensures that Lighthouse and Axe audits work correctly when deployed to Render.

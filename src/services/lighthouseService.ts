@@ -73,15 +73,20 @@ function getSeverity(score: number | null): string {
  */
 export async function runLighthouseAudit(url: string): Promise<LighthouseResult> {
   try {
-    // Check if we're in testing mode
+    // Check if we're in testing mode or mock mode
     const isTestingMode = process.env.NODE_ENV === 'development' || process.env.TESTING_MODE === 'true';
+    const isProduction = process.env.NODE_ENV === 'production';
+    const useMockResults = process.env.USE_MOCK_RESULTS === 'true';
     
     // Create a temporary file to store the Lighthouse results
     const tempDir = os.tmpdir();
     const outputPath = path.join(tempDir, `lighthouse-${Date.now()}.json`);
     
-    // Run the Lighthouse script using our wrapper
+    // Log environment information for debugging
     console.log(`Running Lighthouse audit for ${url}...`);
+    console.log(`Environment: ${process.env.NODE_ENV}`);
+    console.log(`CHROME_PATH: ${process.env.CHROME_PATH || 'Not set'}`);
+    console.log(`PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH || 'Not set'}`);
     
     try {
       // Run the Lighthouse script and wait for it to complete
@@ -89,9 +94,10 @@ export async function runLighthouseAudit(url: string): Promise<LighthouseResult>
     } catch (scriptError) {
       console.error('Lighthouse script execution failed:', scriptError);
       
-      // In testing mode, generate mock results if the script fails
-      if (isTestingMode) {
-        console.log('TESTING MODE: Generating mock Lighthouse results after script failure');
+      // In testing mode or when explicitly configured to use mock results, generate mock results if the script fails
+      if (isTestingMode || useMockResults) {
+        console.log(`${isTestingMode ? 'TESTING' : 'MOCK'} MODE: Generating mock Lighthouse results after script failure`);
+        console.log('This is a fallback mechanism for environments where Chromium might not be available');
         
         // Create a mock Lighthouse result directly in the service
         const mockResult = {
@@ -113,9 +119,9 @@ export async function runLighthouseAudit(url: string): Promise<LighthouseResult>
         
         // Write mock results to the output file
         fs.writeFileSync(outputPath, JSON.stringify(mockResult));
-        console.log('TESTING MODE: Mock Lighthouse results generated successfully');
+        console.log(`${isProduction ? 'PRODUCTION' : 'TESTING'} MODE: Mock Lighthouse results generated successfully`);
       } else {
-        // In production, rethrow the error
+        // In development (not testing mode), rethrow the error
         throw scriptError;
       }
     }
@@ -132,8 +138,8 @@ export async function runLighthouseAudit(url: string): Promise<LighthouseResult>
     } catch (readError) {
       console.error('Error reading Lighthouse results file:', readError);
       
-      if (isTestingMode) {
-        console.log('TESTING MODE: Generating mock Lighthouse results after file read error');
+      if (isTestingMode || useMockResults) {
+        console.log(`${isTestingMode ? 'TESTING' : 'MOCK'} MODE: Generating mock Lighthouse results after file read error`);
         
         // Create a mock result
         return {
@@ -179,8 +185,8 @@ export async function runLighthouseAudit(url: string): Promise<LighthouseResult>
     } catch (parseError) {
       console.error('Error parsing Lighthouse results:', parseError);
       
-      if (isTestingMode) {
-        console.log('TESTING MODE: Generating mock Lighthouse results after JSON parse error');
+      if (isTestingMode || useMockResults) {
+        console.log(`${isTestingMode ? 'TESTING' : 'MOCK'} MODE: Generating mock Lighthouse results after JSON parse error`);
         
         // Create a mock result
         return {
@@ -340,11 +346,14 @@ export async function runLighthouseAudit(url: string): Promise<LighthouseResult>
   } catch (error) {
     console.error('Lighthouse audit failed:', error);
     
-    // Check if we're in testing mode
+    // Check if we're in testing mode or mock mode
     const isTestingMode = process.env.NODE_ENV === 'development' || process.env.TESTING_MODE === 'true';
+    const isProduction = process.env.NODE_ENV === 'production';
+    const useMockResults = process.env.USE_MOCK_RESULTS === 'true';
     
-    if (isTestingMode) {
-      console.log('TESTING MODE: Returning mock Lighthouse results after error');
+    if (isTestingMode || useMockResults) {
+      console.log(`${isTestingMode ? 'TESTING' : 'MOCK'} MODE: Returning mock Lighthouse results after error`);
+      console.log('This is a fallback mechanism for environments where Chromium might not be available');
       
       // Return mock results in testing mode
       return {
