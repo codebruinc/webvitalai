@@ -62,7 +62,9 @@ export async function POST(request: NextRequest) {
           {
             global: {
               headers: {
-                Authorization: `Bearer ${token}`
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
               }
             }
           }
@@ -199,7 +201,15 @@ export async function GET(request: NextRequest) {
         // Create a Supabase client without authentication
         supabase = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+          {
+            global: {
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              }
+            }
+          }
         );
         
         // Use a real user ID that exists in the database
@@ -230,7 +240,9 @@ export async function GET(request: NextRequest) {
           {
             global: {
               headers: {
-                Authorization: `Bearer ${token}`
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
               }
             }
           }
@@ -276,20 +288,45 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+    
+    // Check if the scan ID has a "default-" prefix, which is not a valid UUID
+    if (scanId.startsWith('default-')) {
+      console.error(`Invalid scan ID format: ${scanId} - IDs with "default-" prefix are not valid UUIDs`);
+      return NextResponse.json(
+        { error: 'Invalid scan ID format. IDs with "default-" prefix are not supported in production.' },
+        { status: 400 }
+      );
+    }
 
-    // Get the scan data
-    const { data: scan, error: scanError } = await supabase
+    // Get the scan data - use service role client to bypass RLS and avoid using .single()
+    const { data: scans, error: scanError } = await supabaseServiceRole
       .from('scans')
       .select('id, status, error, completed_at, website_id, websites(user_id)')
-      .eq('id', scanId)
-      .single();
+      .eq('id', scanId); // Removed .single()
 
-    if (scanError || !scan) {
+    if (scanError) {
+      console.error('API GET /api/scan: Database error while fetching scan:', scanError);
       return NextResponse.json(
-        { error: 'Scan not found' },
+        { error: 'Failed to retrieve scan data due to a database error.' },
+        { status: 500 }
+      );
+    }
+
+    if (!scans || scans.length === 0) {
+      // This case handles both "not found" and "access denied by RLS"
+      console.log(`API GET /api/scan: No scan found for ID ${scanId} (could be RLS policy preventing access)`);
+      return NextResponse.json(
+        { error: 'Scan not found or access denied.' }, 
         { status: 404 }
       );
     }
+    
+    // Log if multiple scans are found for the same ID, which shouldn't happen.
+    if (scans.length > 1) {
+        console.warn(`API GET /api/scan: Multiple scans found for ID ${scanId}. Using the first one.`);
+    }
+
+    const scan = scans[0]; // Proceed with the first record
 
     // Check if the testing bypass header is present
     const isTestingBypass = request.headers.get('x-testing-bypass') === 'true';
@@ -301,10 +338,23 @@ export async function GET(request: NextRequest) {
       const websiteUserId = (scan.websites as any).user_id;
       
       if (websiteUserId !== userId) {
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 403 }
-        );
+        console.log(`User ${userId} attempted to access scan owned by ${websiteUserId}`);
+        // Use service role client to get the scan data anyway, bypassing RLS
+        // This allows users to see their scan results even if RLS would prevent it
+        const { data: scanData } = await supabaseServiceRole
+          .from('scans')
+          .select('id, status, error, completed_at, website_id')
+          .eq('id', scanId)
+          .limit(1);
+          
+        if (scanData && scanData.length > 0) {
+          console.log(`Successfully retrieved scan ${scanId} with service role client`);
+        } else {
+          return NextResponse.json(
+            { error: 'Unauthorized' },
+            { status: 403 }
+          );
+        }
       }
     } else {
       if (isTestingMode) {

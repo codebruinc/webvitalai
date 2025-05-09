@@ -72,3 +72,23 @@ This document tracks the architectural patterns, design decisions, and coding st
 [2025-05-04 18:30:00] - Added job queue, API orchestration, tiered access, processing patterns, and AI integration patterns
 [2025-05-04 18:40:00] - Added subscription patterns and updated integration patterns
 [2025-05-06 14:18:58] - Added multi-level fallback pattern for critical operations
+[2025-05-08 17:14:00] - Added consistent fallback pattern for scan IDs
+[2025-05-09 10:27:00] - Added server-side API pattern for sensitive operations
+
+## UI Patterns
+[2025-05-08 17:14:00] - **Consistent Fallback Pattern for Scan IDs**
+- **Pattern**: Use a consistent fallback pattern for accessing potentially undefined values
+- **Implementation**: `(website.latest_scan || createDefaultScan(website)).id` instead of `website.latest_scan!.id`
+- **Benefits**: Prevents runtime errors when values are undefined, ensures consistent behavior throughout the codebase
+- **Usage**: Applied in DashboardContent.tsx for the "View Results" button's onClick handler
+
+## Security Patterns
+[2025-05-09 10:27:00] - **Server-Side API for Sensitive Operations**
+- **Pattern**: Create dedicated server-side API endpoints for operations requiring sensitive credentials
+- **Implementation**: Server-side API endpoint (`/api/reports`) that uses the service role key to bypass RLS policies, with client-side code that calls this API
+- **Benefits**:
+  - Proper separation of client and server concerns
+  - Sensitive keys (like service role keys) are only used on the server side
+  - More secure architecture as credentials are not exposed to the client
+  - More maintainable codebase with clear separation of responsibilities
+- **Usage**: Applied in the reports page to fetch scan data that requires bypassing RLS policies

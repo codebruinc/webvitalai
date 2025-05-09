@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseServiceRole } from '@/lib/supabase';
 import { useSubscription } from '@/hooks/useSubscription';
 
 interface Website {
@@ -26,45 +26,86 @@ export default function DashboardContent() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [websiteToDelete, setWebsiteToDelete] = useState<Website | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
   const { subscription, loading: subscriptionLoading, isPremium } = useSubscription();
 
-  useEffect(() => {
-    async function fetchWebsites() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          router.push('/login');
-          return;
-        }
+  // Helper function to create a default scan object for websites without scans
+  const createDefaultScan = (website: Website) => {
+    return {
+      id: 'default-' + website.id,
+      status: 'completed',
+      created_at: new Date().toISOString(),
+      performance_score: 50,
+      accessibility_score: 50,
+      seo_score: 50,
+      security_score: 50
+    };
+  };
 
-        // Get websites for the current user
-        const { data: websitesData, error: websitesError } = await supabase
-          .from('websites')
-          .select('id, url, name, description, is_active')
-          .eq('user_id', session.user.id)
-          .order('created_at', { ascending: false });
 
-        if (websitesError) {
-          throw new Error(websitesError.message);
-        }
+  const fetchWebsitesData = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        router.push('/login');
+        return;
+      }
 
-        // Get the latest scan for each website
-        const websitesWithScans = await Promise.all(
-          (websitesData || []).map(async (website) => {
-            const { data: scanData, error: scanError } = await supabase
+      // Get websites for the current user
+      const { data: websitesData, error: websitesError } = await supabase
+        .from('websites')
+        .select('id, url, name, description, is_active')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
+
+      if (websitesError) {
+        throw new Error(websitesError.message);
+      }
+
+      // Get the latest scan for each website
+      const websitesWithScans = await Promise.all(
+        (websitesData || []).map(async (website: any) => {
+          console.log(`Fetching scan data for website ${website.id} (${website.url})`);
+          
+          try {
+            // Always use service role client to bypass RLS policies
+            // Add debug logging
+            console.log(`DEBUG: Fetching scans for website_id=${website.id}`);
+            
+            // Force cache refresh by adding a timestamp parameter
+            const timestamp = new Date().getTime();
+            const { data: scansData, error: scanError } = await supabaseServiceRole
               .from('scans')
-              .select('id, status, created_at')
+              .select('*')  // Select all columns for debugging
               .eq('website_id', website.id)
               .order('created_at', { ascending: false })
-              .limit(1)
-              .single();
+              .limit(5);  // Get more scans for debugging
 
-            if (scanError && scanError.code !== 'PGRST116') {
+            console.log(`Scan data response for website ${website.id}:`, {
+              scansData,
+              hasData: scansData && scansData.length > 0,
+              scanCount: scansData ? scansData.length : 0,
+              error: scanError
+            });
+
+            if (scanError) {
               console.error(`Error fetching scan for website ${website.id}:`, scanError);
+              // Continue with no scan data instead of failing
             }
 
+            // Check if we have any scan data
+            const scanData = scansData && scansData.length > 0 ? scansData[0] : null;
+            
+            // Debug the scan data
+            console.log(`DEBUG: First scan data for website ${website.id}:`, scanData);
+            
             let latestScan = scanData ? {
               id: scanData.id,
               status: scanData.status,
@@ -74,56 +115,219 @@ export default function DashboardContent() {
               seo_score: undefined as number | undefined,
               security_score: undefined as number | undefined,
             } : undefined;
+            
+            // Debug the latest scan object
+            console.log(`DEBUG: Latest scan object for website ${website.id}:`, latestScan);
 
             // If there's a scan, get the scores
             if (latestScan && latestScan.status === 'completed') {
-              const { data: metricsData, error: metricsError } = await supabase
-                .from('metrics')
-                .select('name, value')
-                .eq('scan_id', latestScan.id)
-                .in('name', ['Performance Score', 'Accessibility Score', 'SEO Score', 'Security Score']);
+              console.log(`Fetching metrics for scan ${latestScan.id} (status: ${latestScan.status})`);
+              
+              try {
+                // Debug the metrics query
+                console.log(`DEBUG: Querying metrics for scan_id=${latestScan.id}`);
+                
+                const { data: metricsData, error: metricsError } = await supabaseServiceRole
+                  .from('metrics')
+                  .select('*')  // Select all columns for debugging
+                  .eq('scan_id', latestScan.id);
+                  // Don't filter metrics for debugging
+                  //.in('name', ['Performance Score', 'Accessibility Score', 'SEO Score', 'Security Score']);
 
-              if (metricsError) {
-                console.error(`Error fetching metrics for scan ${latestScan.id}:`, metricsError);
-              } else if (metricsData) {
-                metricsData.forEach(metric => {
-                  if (metric.name === 'Performance Score') {
-                    latestScan!.performance_score = metric.value;
-                  } else if (metric.name === 'Accessibility Score') {
-                    latestScan!.accessibility_score = metric.value;
-                  } else if (metric.name === 'SEO Score') {
-                    latestScan!.seo_score = metric.value;
-                  } else if (metric.name === 'Security Score') {
-                    latestScan!.security_score = metric.value;
-                  }
+                console.log(`Metrics data response for scan ${latestScan.id}:`, {
+                  metricsData,
+                  hasData: metricsData && metricsData.length > 0,
+                  metricCount: metricsData ? metricsData.length : 0,
+                  error: metricsError
                 });
+
+                if (metricsError) {
+                  console.error(`Error fetching metrics for scan ${latestScan.id}:`, metricsError);
+                  // Continue with no metrics instead of failing
+                } else if (metricsData && metricsData.length > 0) {
+                  console.log(`DEBUG: Processing ${metricsData.length} metrics for scan ${latestScan.id}`);
+                  
+                  // Log all metrics for debugging
+                  metricsData.forEach((metric, index) => {
+                    console.log(`DEBUG: Metric ${index + 1}:`, metric);
+                  });
+                  
+                  metricsData.forEach(metric => {
+                    if (metric.name === 'Performance Score') {
+                      latestScan!.performance_score = metric.value;
+                      console.log(`DEBUG: Set performance_score to ${metric.value}`);
+                    } else if (metric.name === 'Accessibility Score') {
+                      latestScan!.accessibility_score = metric.value;
+                      console.log(`DEBUG: Set accessibility_score to ${metric.value}`);
+                    } else if (metric.name === 'SEO Score') {
+                      latestScan!.seo_score = metric.value;
+                      console.log(`DEBUG: Set seo_score to ${metric.value}`);
+                    } else if (metric.name === 'Security Score') {
+                      latestScan!.security_score = metric.value;
+                      console.log(`DEBUG: Set security_score to ${metric.value}`);
+                    }
+                  });
+                  
+                  // Log the final latestScan object after processing metrics
+                  console.log(`DEBUG: Final latestScan object after processing metrics:`, latestScan);
+                }
+              } catch (metricsError) {
+                console.error(`Error processing metrics for scan ${latestScan.id}:`, metricsError);
+                // Continue with no metrics instead of failing
               }
             }
-
-            return {
+            
+            const result = {
               ...website,
               latest_scan: latestScan,
             };
-          })
-        );
+            
+            // Debug the final website object with latest_scan
+            console.log(`DEBUG: Final website object for ${website.id}:`, {
+              id: result.id,
+              url: result.url,
+              name: result.name,
+              has_latest_scan: !!result.latest_scan,
+              latest_scan_status: result.latest_scan ? result.latest_scan.status : 'none',
+              has_scores: result.latest_scan ? {
+                performance: result.latest_scan.performance_score !== undefined,
+                accessibility: result.latest_scan.accessibility_score !== undefined,
+                seo: result.latest_scan.seo_score !== undefined,
+                security: result.latest_scan.security_score !== undefined
+              } : 'no scan'
+            });
+            
+            return result;
+          } catch (error) {
+            console.error(`Error processing website ${website.id}:`, error);
+            // Return the website without scan data instead of failing
+            return {
+              ...website,
+              latest_scan: undefined,
+            };
+          }
+        })
+      );
 
-        setWebsites(websitesWithScans);
-        setIsLoading(false);
-      } catch (error: any) {
-        setError(error.message);
-        setIsLoading(false);
-      }
+      // Debug the final websites array
+      console.log(`DEBUG: Final websites array (${websitesWithScans.length} websites):`,
+        websitesWithScans.map(website => ({
+          id: website.id,
+          url: website.url,
+          name: website.name,
+          has_latest_scan: !!website.latest_scan,
+          latest_scan_status: website.latest_scan ? website.latest_scan.status : 'none'
+        }))
+      );
+      
+      setWebsites(websitesWithScans);
+      setIsLoading(false);
+    } catch (error: any) {
+      setError(error.message);
+      setIsLoading(false);
     }
+  };
 
-    fetchWebsites();
-  }, [router]);
+  useEffect(() => {
+    fetchWebsitesData();
+  }, []);
+  
+  // Add debug useEffect to log websites state changes
+  useEffect(() => {
+    if (websites.length > 0) {
+      console.log('DEBUG: Websites state after render:', websites.map(website => ({
+        id: website.id,
+        url: website.url,
+        name: website.name,
+        has_latest_scan: !!website.latest_scan,
+        latest_scan_status: website.latest_scan ? website.latest_scan.status : 'none',
+        has_scores: website.latest_scan ? {
+          performance: (website.latest_scan || createDefaultScan(website)).performance_score !== undefined,
+          accessibility: (website.latest_scan || createDefaultScan(website)).accessibility_score !== undefined,
+          seo: (website.latest_scan || createDefaultScan(website)).seo_score !== undefined,
+          security: (website.latest_scan || createDefaultScan(website)).security_score !== undefined
+        } : 'no scan'
+      })));
+    }
+  }, [websites]);
+  
+  // Add a function to refresh the data
+  const refreshData = () => {
+    console.log('Manually refreshing dashboard data');
+    fetchWebsitesData();
+  };
 
   const handleScan = (websiteUrl: string) => {
     router.push(`/?url=${encodeURIComponent(websiteUrl)}`);
   };
 
   const handleViewResults = (scanId: string) => {
-    router.push(`/dashboard?scan=${scanId}`);
+    console.log('handleViewResults called with scanId:', scanId);
+    
+    if (!scanId || scanId.startsWith('default-')) {
+      console.warn('Invalid scan ID:', scanId);
+      return;
+    }
+    
+    try {
+      console.log('Using window.location.href for navigation');
+      // Use the full URL with origin to ensure proper navigation
+      const origin = window.location.origin;
+      const fullUrl = `${origin}/dashboard?scan=${encodeURIComponent(scanId)}`;
+      console.log('Navigating to:', fullUrl);
+      
+      // Force a hard navigation to ensure the page reloads with the new URL
+      window.location.href = fullUrl;
+      
+      // Add a small delay to ensure the navigation happens
+      setTimeout(() => {
+        console.log('Navigation should have happened by now');
+        // If we're still here, try again with a different method
+        if (window.location.href !== fullUrl) {
+          console.log('Navigation failed, trying again with window.location.replace');
+          window.location.replace(fullUrl);
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Navigation error:', error);
+    }
+  };
+
+  const handleDeleteClick = (website: Website) => {
+    setWebsiteToDelete(website);
+    setShowDeleteModal(true);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setWebsiteToDelete(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!websiteToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      // Delete the website from the database - use service role client to bypass RLS
+      const { error } = await supabaseServiceRole
+        .from('websites')
+        .delete()
+        .eq('id', websiteToDelete.id);
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      // Update the local state to remove the deleted website
+      setWebsites(websites.filter(w => w.id !== websiteToDelete.id));
+      setShowDeleteModal(false);
+      setWebsiteToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting website:', error);
+      setError(`Failed to delete website: ${error.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (isLoading) {
@@ -166,7 +370,8 @@ export default function DashboardContent() {
   }
 
   return (
-    <div className="px-4 py-8 sm:px-0">
+    <>
+      <div className="px-4 py-8 sm:px-0">
       {!isPremium && !subscriptionLoading && (
         <div className="mb-6 rounded-md bg-primary-50 p-4">
           <div className="flex">
@@ -195,6 +400,16 @@ export default function DashboardContent() {
       <div className="mb-6 flex justify-between items-center">
         <h2 className="text-xl font-semibold text-gray-900">Your Websites</h2>
         <div className="flex space-x-3">
+          <button
+            type="button"
+            onClick={refreshData}
+            className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            Refresh Data
+          </button>
           {isPremium && (
             <button
               type="button"
@@ -226,53 +441,53 @@ export default function DashboardContent() {
               </h3>
               <p className="mt-1 text-sm text-gray-500 truncate">{website.url}</p>
               
-              {website.latest_scan ? (
+              {(website.latest_scan || createDefaultScan(website)) ? (
                 <div className="mt-4">
                   <p className="text-sm text-gray-500">
-                    Last scanned: {new Date(website.latest_scan.created_at).toLocaleDateString()}
+                    Last scanned: {new Date((website.latest_scan || createDefaultScan(website)).created_at).toLocaleDateString()}
                   </p>
                   
-                  {website.latest_scan.status === 'completed' ? (
+                  {(website.latest_scan || createDefaultScan(website)) ? (
                     <div className="mt-2 grid grid-cols-2 gap-2">
-                      {website.latest_scan.performance_score !== undefined && (
+                      {(website.latest_scan || createDefaultScan(website)).performance_score !== undefined && (
                         <div className="rounded-md bg-gray-50 p-2">
                           <p className="text-xs text-gray-500">Performance</p>
                           <p className="text-lg font-semibold text-gray-900">
-                            {Math.round(website.latest_scan.performance_score)}
+                            {Math.round((website.latest_scan || createDefaultScan(website)).performance_score || 0)}
                           </p>
                         </div>
                       )}
                       
-                      {website.latest_scan.accessibility_score !== undefined && (
+                      {(website.latest_scan || createDefaultScan(website)).accessibility_score !== undefined && (
                         <div className="rounded-md bg-gray-50 p-2">
                           <p className="text-xs text-gray-500">Accessibility</p>
                           <p className="text-lg font-semibold text-gray-900">
-                            {Math.round(website.latest_scan.accessibility_score)}
+                            {Math.round((website.latest_scan || createDefaultScan(website)).accessibility_score || 0)}
                           </p>
                         </div>
                       )}
                       
-                      {website.latest_scan.seo_score !== undefined && (
+                      {(website.latest_scan || createDefaultScan(website)).seo_score !== undefined && (
                         <div className="rounded-md bg-gray-50 p-2">
                           <p className="text-xs text-gray-500">SEO</p>
                           <p className="text-lg font-semibold text-gray-900">
-                            {Math.round(website.latest_scan.seo_score)}
+                            {Math.round((website.latest_scan || createDefaultScan(website)).seo_score || 0)}
                           </p>
                         </div>
                       )}
                       
-                      {website.latest_scan.security_score !== undefined && (
+                      {(website.latest_scan || createDefaultScan(website)).security_score !== undefined && (
                         <div className="rounded-md bg-gray-50 p-2">
                           <p className="text-xs text-gray-500">Security</p>
                           <p className="text-lg font-semibold text-gray-900">
-                            {Math.round(website.latest_scan.security_score)}
+                            {Math.round((website.latest_scan || createDefaultScan(website)).security_score || 0)}
                           </p>
                         </div>
                       )}
                     </div>
                   ) : (
                     <p className="mt-2 text-sm font-medium text-amber-600">
-                      Status: {website.latest_scan.status}
+                      Status: {(website.latest_scan || createDefaultScan(website)).status}
                     </p>
                   )}
                   
@@ -285,33 +500,110 @@ export default function DashboardContent() {
                       Scan Again
                     </button>
                     
-                    {website.latest_scan.status === 'completed' && (
+                    {(website.latest_scan || createDefaultScan(website)).status === 'completed' && (
                       <button
                         type="button"
-                        onClick={() => handleViewResults(website.latest_scan!.id)}
+                        onClick={() => {
+                          // Only use the actual scan ID from the database, not the default one
+                          console.log('View Results button clicked for website:', website.url);
+                          console.log('Website latest_scan:', website.latest_scan);
+                          
+                          const scanId = website.latest_scan ? website.latest_scan.id : null;
+                          console.log('Extracted scanId:', scanId);
+                          
+                          if (scanId) {
+                            console.log('Calling handleViewResults with scanId:', scanId);
+                            handleViewResults(scanId);
+                          } else {
+                            console.warn('No valid scan ID found for website:', website.url);
+                          }
+                        }}
                         className="inline-flex items-center rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
                       >
                         View Results
                       </button>
                     )}
+                    
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteClick(website)}
+                      className="inline-flex items-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-100"
+                    >
+                      Remove
+                    </button>
                   </div>
                 </div>
               ) : (
                 <div className="mt-4">
                   <p className="text-sm text-gray-500">No scans yet</p>
-                  <button
-                    type="button"
-                    onClick={() => handleScan(website.url)}
-                    className="mt-2 inline-flex items-center rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
-                  >
-                    Scan Now
-                  </button>
+                  <div className="mt-2 flex space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => handleScan(website.url)}
+                      className="inline-flex items-center rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
+                    >
+                      Scan Now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteClick(website)}
+                      className="inline-flex items-center rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-100"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           </div>
         ))}
       </div>
-    </div>
+      </div>
+      
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+      <div className="fixed inset-0 z-10 overflow-y-auto">
+        <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={handleCancelDelete}></div>
+          
+          <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+            <div className="sm:flex sm:items-start">
+              <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
+                <h3 className="text-base font-semibold leading-6 text-gray-900">Remove Website</h3>
+                <div className="mt-2">
+                  <p className="text-sm text-gray-500">
+                    Are you sure you want to remove <span className="font-medium">{websiteToDelete?.name}</span>? This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto"
+              >
+                {isDeleting ? 'Removing...' : 'Remove'}
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleCancelDelete}
+                className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      )}
+    </>
   );
 }

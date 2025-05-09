@@ -77,7 +77,7 @@ export async function getAgencyClients(agencyId: string): Promise<AgencyClient[]
     return [];
   }
 
-  const clientIds = clientRelations.map(relation => relation.client_id);
+  const clientIds = clientRelations.map((relation: any) => relation.client_id);
 
   const { data: clients, error: clientsError } = await supabase
     .from('users')
@@ -110,7 +110,7 @@ export async function getAgencyClients(agencyId: string): Promise<AgencyClient[]
       continue;
     }
 
-    const formattedWebsites: AgencyClientWebsite[] = websites.map(website => {
+    const formattedWebsites: AgencyClientWebsite[] = websites.map((website: any) => {
       // Find the most recent completed scan
       const lastScan = website.scans
         ? website.scans
@@ -259,7 +259,7 @@ export async function getPendingInvitations(agencyId: string): Promise<ClientInv
     return [];
   }
 
-  return data.map(invitation => ({
+  return data.map((invitation: any) => ({
     id: invitation.id,
     email: invitation.email,
     token: invitation.token,
@@ -385,7 +385,7 @@ export async function getClientAgencies(clientId: string): Promise<string[]> {
     return [];
   }
 
-  return data.map(relation => relation.agency_id);
+  return data.map((relation: any) => relation.agency_id);
 }
 
 /**

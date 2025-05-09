@@ -60,7 +60,7 @@ export async function getIndustryBenchmarks(industry: string): Promise<IndustryB
     return [];
   }
 
-  return data.map(item => ({
+  return data.map((item: any) => ({
     id: item.id,
     industry: item.industry,
     metricName: item.metric_name,

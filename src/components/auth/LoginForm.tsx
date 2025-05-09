@@ -4,6 +4,7 @@ import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { AuthError } from '@supabase/supabase-js';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -18,6 +19,16 @@ export default function LoginForm() {
     setClientReady(true);
   }, []);
 
+  // Track login attempts to implement backoff
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lastAttemptTime, setLastAttemptTime] = useState(0);
+
+  // Calculate backoff time based on number of attempts (exponential backoff)
+  const getBackoffTime = (attempts: number): number => {
+    // Start with 1 second, then increase exponentially (1s, 2s, 4s, etc.)
+    return Math.min(Math.pow(2, attempts - 1) * 1000, 30000); // Max 30 seconds
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -29,6 +40,21 @@ export default function LoginForm() {
         throw new Error('Client not ready');
       }
 
+      // Check if we need to wait due to rate limiting
+      const now = Date.now();
+      const timeSinceLastAttempt = now - lastAttemptTime;
+      const backoffTime = getBackoffTime(loginAttempts);
+      
+      if (loginAttempts > 0 && timeSinceLastAttempt < backoffTime) {
+        const waitTime = Math.ceil((backoffTime - timeSinceLastAttempt) / 1000);
+        throw new Error(`Too many login attempts. Please wait ${waitTime} seconds before trying again.`);
+      }
+
+      // Update attempt tracking
+      setLoginAttempts(prev => prev + 1);
+      setLastAttemptTime(now);
+
+      // Attempt to sign in
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -38,11 +64,34 @@ export default function LoginForm() {
         throw error;
       }
 
+      // Reset attempt counter on success
+      setLoginAttempts(0);
+      
+      // Handle successful login
       router.push('/dashboard');
       router.refresh();
     } catch (error: any) {
       console.error('Login error:', error);
-      setError(error.message || 'An error occurred during login');
+      
+      // Handle rate limit errors specifically
+      if (error instanceof AuthError && 
+          (error.message.includes('rate limit') || error.status === 429)) {
+        setError('Login rate limit reached. Please wait a moment before trying again.');
+        // Increase backoff for rate limit errors
+        setLoginAttempts(prev => prev + 2);
+      } 
+      // Handle refresh token errors
+      else if (error instanceof AuthError && 
+               error.message.includes('Refresh Token')) {
+        // Clear any existing session that might be invalid
+        await supabase.auth.signOut();
+        setError('Your session has expired. Please sign in again.');
+        setLoginAttempts(0); // Reset attempts for a fresh login
+      }
+      // Handle other errors
+      else {
+        setError(error.message || 'An error occurred during login');
+      }
     } finally {
       setLoading(false);
     }

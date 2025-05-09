@@ -310,3 +310,208 @@ Each entry should include:
   - Improved reliability for scripts that need to run in Node.js environments
 - Stakeholders: Development team, operations team
 - Stakeholders: Development team, operations team, users
+[2025-05-08 09:25:20] - Fixed 406 errors in Supabase API requests by adding proper headers. The issue was occurring because some direct Supabase client instances were being created without the required 'Accept: application/json' and 'Content-Type: application/json' headers. Modified src/app/api/scan/route.ts to ensure all client instances include these headers. This ensures consistent header usage across all Supabase API requests, whether they're made through the imported Supabase client or direct client creations.
+
+[2025-05-08 10:30:00] - **Scan API PGRST116 Error Fix**
+- Decision: Modified the GET endpoint in src/app/api/scan/route.ts to avoid using .single() when fetching scan data
+- Rationale: The .single() method was causing PGRST116 errors when RLS policies prevented access to a scan, resulting in 0 rows being returned. By removing .single() and handling the empty array case explicitly, we can provide a more graceful error response.
+- Alternatives:
+  - Using the service role client for all scan fetches (security risk, bypasses RLS)
+  - Modifying RLS policies to be more permissive (potential security implications)
+  - Using try/catch around the .single() call (less robust, doesn't address the root cause)
+- Implications:
+  - More robust error handling in the scan API
+  - Better user experience with clear error messages
+  - Improved logging for debugging RLS-related issues
+  - No changes to RLS policies required
+- Stakeholders: Development team, users
+
+[2025-05-08 11:09:06] - **Dashboard Scan Retrieval Fix**
+- Decision: Modified DashboardContent.tsx to avoid using .single() when fetching scan data
+- Rationale: The .single() method was causing PGRST116 errors when no scan data was found, which was happening due to RLS policies or when scans hadn't been properly saved
+- Alternatives:
+  - Using the service role client for all scan fetches (security risk, bypasses RLS)
+  - Adding error handling specifically for PGRST116 errors (less robust, doesn't address the root cause)
+  - Modifying RLS policies to be more permissive (potential security implications)
+- Implications:
+  - More robust error handling in the dashboard
+  - Better user experience with proper display of scan data
+  - Consistent approach with the scan API fix that also removed .single()
+  - No changes to RLS policies required
+- Stakeholders: Development team, users
+
+[2025-05-08 11:18:35] - **Enhanced Dashboard Scan Retrieval with Service Role Client**
+- Decision: Modified DashboardContent.tsx to use the service role client (supabaseServiceRole) for fetching scan data and metrics
+- Rationale: The regular client was still affected by RLS policies, preventing access to scan data even after fixing the PGRST116 error. The service role client bypasses RLS policies, ensuring data access.
+- Alternatives:
+  - Modifying RLS policies to be more permissive (potential security implications)
+  - Creating custom database functions with SECURITY DEFINER (more complex)
+  - Implementing client-side caching of scan results (less reliable)
+- Implications:
+  - More reliable data retrieval in the dashboard
+  - Bypassing RLS policies in a controlled manner
+  - Added debugging logs to help identify issues
+  - Added a refresh button for manual data refresh
+- Stakeholders: Development team, users
+
+[2025-05-08 12:09:55] - **PGRST116 Fix in Alert Service**
+- Decision: Modified `checkAlertsForScan` in `src/services/alertService.ts` to fetch scan data as an array and check its length, instead of using `.single()`.
+- Rationale: A `.single()` call was causing `PGRST116` ("JSON object requested, multiple (or no) rows returned") errors when fetching scan details for alert checking. This error occurred after the main scan processing logged completion but before the job queue marked the job as fully complete, potentially interrupting the overall scan update and display on the dashboard.
+- Alternatives:
+    - Using a try-catch around the `.single()` call (would handle the error but not prevent it, and might mask underlying issues if a scan truly isn't found).
+    - Modifying RLS policies (not ideal as the service role client should generally be used for these internal operations if RLS is a factor, or the query itself should be robust to missing data).
+- Implications:
+    - Prevents `PGRST116` errors in the alert checking part of scan processing.
+    - Ensures more robust handling of scan data fetching within the `alertService`.
+    - Improves the reliability of the scan completion flow, which should lead to more consistent display of scan results on the dashboard.
+- Stakeholders: Development team
+
+[2025-05-08 12:19:22] - **Fix 400 Bad Request on Reports Page**
+- Decision: Corrected the Supabase query in `src/app/reports/page.tsx` to properly select related data and filter by user ID.
+- Rationale: The reports page was making a GET request to `/rest/v1/scans` with incorrect select parameters (`website_url` instead of `websites(url)`) and an incorrect filter (`user_id` directly on `scans` instead of `websites.user_id`). This caused a 400 Bad Request error.
+- Alternatives:
+    - Fetching all scans and then filtering client-side (inefficient and insecure).
+    - Creating a custom database view or function (more complex for this specific fix, though potentially useful for optimizing score retrieval later).
+- Implications:
+    - Resolved the 400 Bad Request error on the reports page.
+    - Scans for the logged-in user should now be fetched and displayed correctly.
+    - Added a type assertion for `scan.websites.url` to satisfy TypeScript.
+- Stakeholders: Development team
+
+[2025-05-08 12:23:18] - **TypeScript Fix for Reports Page Data Transformation**
+- Decision: Refined the data transformation logic in `src/app/reports/page.tsx` to correctly access `scan.websites[0].url`.
+- Rationale: A previous fix for the 400 Bad Request error introduced a TypeScript error during the build process. The type `scan.websites` (from a Supabase select with a join) was inferred as an array, and the attempt to cast it directly to an object or access `.url` without indexing was incorrect. The fix ensures that `scan.websites` is treated as an array, and its first element's `url` property is accessed safely.
+- Alternatives:
+    - Modifying Supabase type definitions (more involved, potentially risky if generated types are overwritten).
+    - Using `any` type (defeats the purpose of TypeScript).
+- Implications:
+    - Resolved the TypeScript build error.
+    - Ensures type-safe access to nested data from Supabase queries.
+- Stakeholders: Development team
+
+## [2025-05-08 17:20:00] - Supabase URL Validation Fix
+
+### Decision
+Add URL validation to the supabase.ts file to prevent "Invalid URL" errors when creating Supabase clients.
+
+### Rationale
+- The application was crashing with "TypeError: Invalid URL" when the Supabase URL was invalid or empty
+- There was no validation to ensure the URL was valid before creating the Supabase client
+- Adding validation provides a clear error message early in the application lifecycle
+- This prevents cryptic errors that are harder to debug later in the application flow
+
+### Alternatives Considered
+1. **Add a default URL for development**:
+   ```typescript
+   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:54321';
+   ```
+   This would prevent the error when the URL is empty, but would potentially cause other issues if the default URL is not valid or accessible.
+
+2. **Add a runtime check only when creating clients**:
+   ```typescript
+   if (!supabaseUrl.startsWith('http')) {
+     throw new Error(`Invalid Supabase URL: ${supabaseUrl}`);
+   }
+   ```
+   This would catch some invalid URLs but not all, as it's a less comprehensive check than using the URL constructor.
+
+3. **Use a try-catch only around client creation**:
+   ```typescript
+   try {
+     export const supabaseAdmin = createClient(supabaseUrl, supabaseAnonKey);
+   } catch (error) {
+     console.error('Error creating Supabase client:', error);
+     throw new Error('Failed to create Supabase client due to invalid URL');
+   }
+   ```
+   This would catch the error but would provide less specific error messages and would be repeated for each client creation.
+
+### Implementation
+The chosen approach validates the URL early and provides a clear error message:
+```typescript
+// Ensure supabaseUrl is a valid URL
+try {
+  // Test if the URL is valid by creating a URL object
+  new URL(supabaseUrl);
+} catch (error) {
+  console.error('Invalid Supabase URL:', supabaseUrl);
+  throw new Error(`Invalid Supabase URL: ${supabaseUrl}`);
+}
+```
+
+### Implications
+- Early detection of invalid Supabase URLs with clear error messages
+- Improved debugging experience when environment variables are misconfigured
+- More robust application initialization process
+- Better developer experience with clearer error messages
+
+### Stakeholders
+- Development team
+- Operations team
+## [2025-05-08 17:14:00] - Dashboard Scan Results Button Fix Approach
+
+### Decision
+Use a consistent fallback pattern for accessing scan IDs in the DashboardContent.tsx file by modifying the "View Results" button's onClick handler to use the same pattern as the rest of the code.
+
+### Rationale
+- The existing code was inconsistently handling potential undefined values for website.latest_scan
+- Most of the code used a fallback pattern: (website.latest_scan || createDefaultScan(website))
+- The "View Results" button's onClick handler used a non-null assertion operator (!) instead
+- This inconsistency was causing a runtime error when website.latest_scan was undefined
+- Using the same fallback pattern throughout the code ensures consistent behavior and prevents errors
+
+### Alternatives Considered
+1. **Add a null check before the onClick handler**: 
+   ```tsx
+   {website.latest_scan && (
+     <button onClick={() => handleViewResults(website.latest_scan.id)}>
+       View Results
+     </button>
+   )}
+   ```
+   This would prevent the error but would make the button not appear at all when latest_scan is undefined, even though we have a createDefaultScan function that could provide a fallback.
+
+2. **Modify the handleViewResults function**:
+   ```tsx
+   const handleViewResults = (website: Website) => {
+     const scanId = website.latest_scan?.id || createDefaultScan(website).id;
+     router.push(`/dashboard?scan=${scanId}`);
+   };
+   ```
+   This would work but would require changing the function signature and all its usages, which is a more invasive change.
+
+3. **Use optional chaining with a fallback**:
+   ```tsx
+   onClick={() => handleViewResults(website.latest_scan?.id || createDefaultScan(website).id)}
+   ```
+   This would also work but is slightly more verbose than using the existing pattern.
+
+### Implementation
+The chosen approach maintains consistency with the existing code patterns and requires minimal changes:
+```tsx
+onClick={() => handleViewResults((website.latest_scan || createDefaultScan(website)).id)}
+```
+
+[2025-05-09 08:22:00] - **Dashboard View Results Button Fix Strategy**
+- **Decision**: Modified the "View Results" button's onClick handler to only use actual scan IDs from the database, never the default ones.
+- **Rationale**: The previous implementation was using a fallback pattern that could cause "default-" to be appended to the URL even for scans that were saved in the database. This was causing incorrect URLs when viewing scan results.
+- **Implications**: 
+  - Ensures that only real scan IDs from the database are used for completed scans
+  - Prevents the "default-" prefix from being appended to URLs
+
+[2025-05-09 10:27:00] - **Reports Page Server-Side API Approach**
+- Decision: Implemented a server-side API approach for the reports page by creating a dedicated API endpoint and rewriting the client-side code to use it
+- Rationale: The reports page was not showing any scan results because it was trying to use the service role key directly in the browser, where it's not available. This architectural issue should have been addressed much earlier in the project.
+- Alternatives:
+  - Continue trying to fix the client-side approach (not viable as the service role key should never be exposed to the client)
+  - Use a different authentication mechanism (would require significant changes to the entire authentication system)
+  - Modify RLS policies to be more permissive (security risk)
+- Implications:
+  - Proper separation of client and server concerns
+  - Service role key is only used on the server side where it's available
+  - More secure architecture as sensitive keys are not exposed to the client
+  - More maintainable codebase with clear separation of responsibilities
+  - Users can now see their past scans on the reports page
+- Stakeholders: Development team, users
+  - Adds a warning log when no valid scan ID is found
+  - Improves user experience by ensuring correct URLs when viewing scan results

@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     // Get the scan ID from the URL
     const url = new URL(request.url);
     const scanId = url.searchParams.get('id');
+    console.log('Scan results API called with scanId:', scanId);
 
     if (!scanId) {
       return NextResponse.json(
@@ -27,14 +28,23 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // Check if the scan ID has a "default-" prefix, which is not a valid UUID
+    // This check is now handled by getScanResults, so we don't need to return an error here
+    if (scanId.startsWith('default-')) {
+      console.warn(`Warning: Scan ID has default- prefix: ${scanId}`);
+    }
+    
     // TESTING BYPASS: Return mock data for scan results in testing mode
     if (isTestingMode && isTestingBypass) {
       console.log('Bypassing database lookup for scan results API (testing mode)');
       
       // Use the getScanResult function which now handles mock scan IDs
+      console.log('Testing mode: Fetching scan results for scanId:', scanId);
       const scanResult = await getScanResults(scanId);
+      console.log('Testing mode: Scan result returned:', scanResult ? 'Found' : 'Not found');
       
       if (!scanResult) {
+        console.error('Testing mode: Scan result not found for scanId:', scanId);
         return NextResponse.json(
           { error: 'Scan result not found' },
           { status: 404 }
@@ -105,9 +115,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the scan result
+    console.log('Production mode: Fetching scan results for scanId:', scanId);
     const scanResult = await getScanResults(scanId);
+    console.log('Production mode: Scan result returned:', scanResult ? 'Found' : 'Not found');
 
     if (!scanResult) {
+      console.error('Production mode: Scan result not found for scanId:', scanId);
       return NextResponse.json(
         { error: 'Scan result not found' },
         { status: 404 }

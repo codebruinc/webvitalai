@@ -30,7 +30,7 @@ export function useAuth() {
 
       // Listen for auth changes
       const { data: authListener } = supabase.auth.onAuthStateChange(
-        (event, session) => {
+        (event: string, session: { user: any } | null) => {
           console.log('Auth state changed:', event);
           setUser(session?.user || null);
           setLoading(false);

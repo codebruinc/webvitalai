@@ -185,3 +185,62 @@ Each entry should include:
 - Status: Completed
 - Notes: Fixed the issue with Puppeteer not finding Chromium in production environment by creating proper .cjs scripts (set-chromium-path.cjs and install-puppeteer-deps.cjs) to replace the .js versions. Updated the .puppeteerrc.cjs configuration to better handle production environments where Chromium might not be available at the expected path. Added a decision log entry to document the requirement to use .cjs files instead of .js files for Node.js scripts in this project.
 - Notes: Fixed Chromium/Puppeteer-related errors for Render hosting by implementing a comprehensive solution that uses Puppeteer's bundled Chromium with Render-specific configuration. Updated axeService.ts and lighthouseService.ts with fallback mechanisms for production environments, modified run-lighthouse.js to use environment variables, created .puppeteerrc.cjs for Puppeteer configuration, updated Dockerfile with necessary dependencies for Chromium on Alpine Linux, created render.yaml and .buildpacks for Render configuration, and added scripts for setup and testing. Created comprehensive documentation in docs/deployment/render-deployment.md and added a verification script (verify-chromium-setup.js) to help troubleshoot Chromium issues. This ensures that Lighthouse and Axe audits work correctly when deployed to Render.
+
+[2025-05-08 09:15:00] - **Dashboard Scan Display Fix**
+- Status: Completed
+- Notes: Fixed dashboard scan display issues by adding proper headers to Supabase API requests. Modified src/lib/supabase.ts to include default headers for all Supabase clients and updated src/app/dashboard/page.tsx to include proper headers in fetch requests. Created restart-dashboard-fix.sh script to apply the changes and restart the application. Added comprehensive documentation in docs/dashboard-scan-display-fix.md and a summary in DASHBOARD-SCAN-FIX-SUMMARY.md.
+
+[2025-05-08 09:25:32] - Fixed 406 errors in Supabase API requests by ensuring all direct Supabase client creations include proper 'Accept: application/json' and 'Content-Type: application/json' headers. Modified src/app/api/scan/route.ts to add these headers to all temporary Supabase client instances. This ensures consistent header usage across all Supabase API requests, resolving the 406 errors that were occurring in specific scan queries.
+[2025-05-08 09:33:00] - **406 Errors Documentation**
+- Status: Completed
+- Notes: Created comprehensive documentation in 406-ERRORS-FIX.md explaining the 406 errors encountered in Supabase API requests, their root cause (missing HTTP headers), the solution implemented (adding 'Accept: application/json' and 'Content-Type: application/json' headers to all Supabase clients), verification methods, and prevention measures for future development.
+
+[2025-05-08 10:30:00] - **Scan API PGRST116 Error Fix**
+- Status: Completed
+- Notes: Fixed PGRST116 "0 rows returned" errors in the scan API by modifying the GET endpoint in src/app/api/scan/route.ts to avoid using .single() when fetching scan data. The fix ensures that when RLS policies prevent access to a scan, the API returns a proper 404 error with a clear message instead of crashing with a PGRST116 error. Created comprehensive documentation in docs/scan-api-pgrst116-fix.md explaining the issue, root cause, solution, and related RLS policy considerations.
+
+[2025-05-08 11:01:10] - Added website removal functionality to the dashboard, allowing users to delete websites they no longer want to monitor. Implemented a confirmation modal to prevent accidental deletions.
+
+[2025-05-08 11:08:52] - **Dashboard Scan Retrieval Fix**
+- Status: Completed
+- Notes: Fixed the issue with scan data not being retrieved from the saved data on the dashboard when returning to the dashboard. Modified DashboardContent.tsx to avoid using .single() when fetching scan data, which prevents PGRST116 errors and properly handles cases where no scan data is found due to RLS policies. This ensures that scan data is correctly retrieved and displayed on the dashboard after running a scan.
+
+[2025-05-08 11:18:26] - **Enhanced Dashboard Scan Retrieval Fix**
+- Status: Completed
+- Notes: Enhanced the dashboard scan retrieval fix by using the service role client to bypass RLS policies. Modified DashboardContent.tsx to use supabaseServiceRole for fetching scan data and metrics, added detailed logging for debugging, and implemented a refresh button to allow users to manually refresh the data. This ensures scan data is correctly retrieved and displayed on the dashboard after running a scan, even when RLS policies might prevent access.
+
+## [2025-05-08 17:19:00] - Dashboard Scan Results Button and Supabase URL Validation Fix
+- **Status**: Completed
+- **Description**: Fixed two issues: 1) The "View Results" button on the dashboard page that was causing a JavaScript error when clicked, and 2) The "Invalid URL" error when creating Supabase clients with an invalid URL.
+- **Actions Taken**:
+  - **For View Results Button**:
+    - Identified the root cause: inconsistent use of fallback pattern for accessing scan IDs in DashboardContent.tsx
+    - Modified DashboardContent.tsx to use the fallback pattern consistently
+  - **For Supabase URL Validation**:
+    - Identified the root cause: missing URL validation in supabase.ts
+    - Added URL validation to ensure the Supabase URL is valid before creating clients
+  - **Common Actions**:
+    - Updated the fix script (scripts/fix-dashboard-scan-results.cjs) to handle both issues
+    - Updated documentation in docs/dashboard-scan-results-button-fix.md to cover both fixes
+- **Notes**: The fixes ensure that 1) even when website.latest_scan is undefined, the code falls back to a default scan object, preventing the "Cannot read properties of undefined" error, and 2) invalid Supabase URLs are caught early with a clear error message.
+
+## [2025-05-09 08:22:00] - Scan ID Format Fix for Dashboard View Results Button
+- **Status**: Completed
+- **Description**: Fixed the issue where the "View Results" button on the dashboard was appending "default" to the URL string for scans that were recently completed and saved in the database.
+- **Actions Taken**:
+  - Identified the root cause: The fallback pattern in DashboardContent.tsx was using createDefaultScan even for completed scans in the database
+  - Modified the "View Results" button's onClick handler to only use actual scan IDs from the database, never the default ones
+  - Created scripts/test-scan-id-format-fix.cjs to verify the fix
+  - Created scripts/fix-scan-id-format.cjs to apply the fix to any installation
+  - Added documentation in docs/scan-id-format-fix.md
+- **Notes**: The fix ensures that only real scan IDs from the database are used, and the "default-" prefix is never appended to URLs for completed scans, which resolves the issue with incorrect URLs in the dashboard.
+
+## [2025-05-09 10:27:00] - Reports Page Query Fix with Server-Side API Approach
+- **Status**: Completed
+- **Description**: Fixed the long-standing issue with the reports page not showing any scan results for users, which should have been addressed much earlier in the project.
+- **Actions Taken**:
+  - Created a server-side API endpoint (`src/app/api/reports/route.ts`) that uses the service role key to bypass RLS policies
+  - Completely rewrote the reports page to use the server-side API instead of trying to use the service role key directly in the browser
+  - Fixed TypeScript errors throughout the codebase
+  - Implemented a singleton pattern for the Supabase client to prevent multiple GoTrueClient instances
+- **Notes**: This fix addresses the fundamental architectural issue that was causing the reports page to fail. The service role key is only available on the server side, not in the browser, so moving the complex Supabase queries to a server-side API endpoint ensures that the service role key is properly used to bypass RLS policies and fetch the scan data. This approach should have been implemented much earlier in the project.

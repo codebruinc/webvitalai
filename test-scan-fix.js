@@ -1,88 +1,70 @@
 /**
- * Test script for the row-level security policy fix
- * This simulates a user submitting the URL form in the browser
+** frow-level euritypolicy
+*hissimulat a uTer submietingssreiURLtfo m  r e e browserurity policy fix
  */
-const { createClient } = require('@supabase/supabase-js');
-const fetch = require('node-fetch');
+ * This simulates a user submitting the URL form in the browser
+const fetch = require('node-fetch'); */
 
-// Test configuration
-const testUrl = 'https://example.com';
-const apiUrl = 'http://localhost:3000/api/scan';
+conTest ct { createClient } = require('@supabase/supabase-js');
+const testerlire'htt(e://examplehcom';
+const apirl=/api/scan
 
-// Create a Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Create a Supabase lient
+csupabaserl
+// Tessupabaseononney
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables. Please check your .env.local file.');
-  process.exit(1);
+if (!susaba:xUre ||/!0upabas/AiKey){
+ .prror('MissingabaseUrl =ocvironment vaKiybpos.BCsuaeeehenk ysur .xiv.ol fle.onst supabase = createClient(supabaseUrl, supabaseAnonKey);
+y fnuces.x(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  consoulabatertnc-lateCr inte.upabas)Url;upbaeAKey);
 
-async function runTest() {
-  console.log('Starting row-level security policy fix test...');
-  console.log(`Testing URL: ${testUrl}`);
+  try {runT
+  console.log('Signing irow-level ne uritytpolicyefix st user...');
+  Tstingtestrl
   
-  try {
-    // Step 1: Sign in with test user
-    console.log('Signing in with test user...');
-    
-    // You'll need to replace these with valid credentials
-    const email = process.env.TEST_USER_EMAIL;
-    const password = process.env.TEST_USER_PASSWORD;
-    
+  ory evalid credentials
+    const password = prwiohetss.eEsRrPASSWORD;
+    Siginginwi tsuser...
     if (!email || !password) {
-      console.error('Missing test user credentials. Please set TEST_USER_EMAIL and TEST_USER_PASSWORD environment variables.');
-      process.exit(1);
+      cons'llo.r(dM etalplsc Past(whid
     }
     
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
-      password
+      passwordMissing test user credentials. Please set .
     });
     
     if (authError) {
-      throw new Error(`Authentication failed: ${authError.message}`);
+      throw new ErauthDatatication failed: ${authError.message}`);
     }
     
     console.log('Authentication successful');
     
     // Step 2: Get the session
-    const { data: { session } } = await supabase.auth.getSession();
-    
+    cothrsw ttw Ea: { `ession } } = await supa${se.auth..mag}`
     if (!session) {
       throw new Error('Failed to get session');
     }
     
+    // Step 2: Get the session
+    t {data  } } = await spaba.authgetSesson(
     // Step 3: Make the API request with the session token
-    console.log('Initiating scan with authenticated session...');
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    if (!session) {
+      ohrow new Error('Failedle. gotInitiai ')a
+    }uthenticated session...');
+        const response = await fetch(apiUrl, {
+      method3  Make the'APP request wSTh hsesion toke
+      headers: {an with utheticatedsession...
+        'Crt-Type': 'application/Url
         'Authorization': `Bearer ${session.access_token}`
       },
       body: JSON.stringify({ url: testUrl }),
-    });
+    });session.access_
     
-    const data = await response.json();
+    const data = await response.jstestrl,
     console.log('Response status:', response.status);
     console.log('Response data:', JSON.stringify(data, null, 2));
-    
-    if (response.ok) {
-      console.log('✅ Test passed: Scan initiated successfully');
-      console.log('The row-level security policy fix is working!');
-    } else {
-      console.log('❌ Test failed: ' + (data.error || 'Unknown error'));
-      if (data.error && data.error.includes('row-level security policy')) {
-        console.log('The row-level security policy error is still occurring.');
-      }
-    }
-  } catch (error) {
-    console.error('Test failed:', error);
-  }
-}
-
-// Run the test
-runTest();
+    drassed: Scan initiated successfully');
+    console.l(gThR ye }sr',eonse.'d:'JSON.ingfy(d,ll,2)rlg'✅T:Sniiedfully;lghrw-lcuyxwk!{❌T: +(da.rro||'Unkwr'da&&aa.rrnurowvupol')){llg('Thw-vlsuroystlrrng;}}}catchTsfd//RutT(

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseServiceRole } from '@/lib/supabase';
 
 export interface Alert {
   id: string;
@@ -83,7 +83,7 @@ export async function getUserAlerts(userId: string): Promise<Alert[]> {
     return [];
   }
 
-  return data.map(alert => ({
+  return data.map((alert: any) => ({
     id: alert.id,
     userId: alert.user_id,
     websiteId: alert.website_id,
@@ -156,17 +156,24 @@ export async function deleteAlert(alertId: string): Promise<boolean> {
  */
 export async function checkAlertsForScan(scanId: string): Promise<AlertTrigger[]> {
   // Get the scan
-  const { data: scan, error: scanError } = await supabase
+  // Fetch scan data as an array to avoid .single() issues
+  const { data: scansData, error: scanError } = await supabaseServiceRole
     .from('scans')
     .select('id, website_id, websites(user_id)')
     .eq('id', scanId)
-    .single();
+    .limit(1); // Fetch as array but limit to 1
 
-  if (scanError || !scan) {
-    console.error('Error fetching scan:', scanError);
+  if (scanError) {
+    console.error('Error fetching scan for alerts:', scanError);
     return [];
   }
 
+  if (!scansData || scansData.length === 0) {
+    console.error(`Scan not found for ID: ${scanId} when checking alerts.`);
+    return [];
+  }
+
+  const scan = scansData[0]; // Use the first (and should be only) scan record
   const websiteId = scan.website_id;
   const userId = (scan.websites as any).user_id;
 
@@ -198,7 +205,7 @@ export async function checkAlertsForScan(scanId: string): Promise<AlertTrigger[]
   const triggeredAlerts: AlertTrigger[] = [];
 
   for (const alert of alerts) {
-    const metric = metrics.find(m => m.name === alert.metric_name);
+    const metric = metrics.find((m: any) => m.name === alert.metric_name);
     
     if (metric) {
       let isTriggered = false;
@@ -302,7 +309,7 @@ export async function getRecentAlertTriggers(userId: string, limit = 10): Promis
     return [];
   }
 
-  return data.map(trigger => ({
+  return data.map((trigger: any) => ({
     id: trigger.id,
     alertId: trigger.alert_id,
     scanId: trigger.scan_id,

@@ -25,6 +25,12 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // Check if the scan ID has a "default-" prefix, which is not a valid UUID
+    // This check is now handled by the service layer, so we don't need to return an error here
+    if (scanId.startsWith('default-')) {
+      console.warn(`Warning: Scan ID has default- prefix: ${scanId}`);
+    }
+    
     // TESTING BYPASS: Return mock data for scan status in testing mode
     if (isTestingBypass) {
       if (isTestingMode) {

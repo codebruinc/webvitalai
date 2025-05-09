@@ -12,9 +12,25 @@ import LoadingState from '@/components/dashboard/LoadingState';
 import { useSubscription } from '@/hooks/useSubscription';
 
 export default function DashboardPage() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const scanId = searchParams.get('scan');
+  const searchParams = useSearchParams();
+  
+  // Get the scan ID from the URL parameters
+  const scanIdFromParams = searchParams.get('scan');
+  
+  // Store the scan ID in state to ensure it persists during component lifecycle
+  const [scanId, setScanId] = useState<string | null>(null);
+  
+  // Set the scan ID from URL parameters when the component mounts or URL changes
+  useEffect(() => {
+    if (scanIdFromParams) {
+      console.log('Dashboard page loaded with scanId from URL:', scanIdFromParams);
+      setScanId(scanIdFromParams);
+    } else {
+      console.log('No scan ID found in URL parameters');
+    }
+  }, [scanIdFromParams]);
+  
   const { isPremium } = useSubscription();
   
   const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +41,20 @@ export default function DashboardPage() {
 
   // Poll for scan status if a scan ID is provided
   useEffect(() => {
-    if (!scanId) return;
+    if (!scanId) {
+      console.log('No scan ID provided, showing dashboard');
+      return;
+    }
+
+    console.log('Dashboard page processing scanId:', scanId);
+    
+    // Validate scan ID format
+    if (scanId.startsWith('default-')) {
+      console.error('Invalid scan ID format (default- prefix):', scanId);
+      setError('Invalid scan ID format');
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -35,15 +64,23 @@ export default function DashboardPage() {
         // Check if we're in development mode
         const isDevelopment = process.env.NODE_ENV === 'development';
         
-        // Add testing bypass header in development mode
-        const headers: HeadersInit = {};
+        // Add headers for API requests
+        const headers: HeadersInit = {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        };
+        
         if (isDevelopment) {
           console.log('Development mode: Adding testing bypass header');
           headers['x-testing-bypass'] = 'true';
         }
         
-        const response = await fetch(`/api/scan/status?id=${scanId}`, {
-          headers
+        console.log('Fetching scan status for scanId:', scanId);
+        // Add a timestamp to prevent caching
+        const timestamp = new Date().getTime();
+        const response = await fetch(`/api/scan/status?id=${encodeURIComponent(scanId)}&_=${timestamp}`, {
+          headers,
+          cache: 'no-store'
         });
         const data = await response.json();
 
@@ -57,15 +94,22 @@ export default function DashboardPage() {
         // If the scan is completed, get the results
         if (data.data.status === 'completed') {
           // Use the same headers for the results request
-          const resultsResponse = await fetch(`/api/scan/results?id=${scanId}`, {
-            headers
+          console.log('Scan completed, fetching results for scanId:', scanId);
+          // Add a timestamp to prevent caching
+          const resultsTimestamp = new Date().getTime();
+          const resultsResponse = await fetch(`/api/scan/results?id=${encodeURIComponent(scanId)}&_=${resultsTimestamp}`, {
+            headers,
+            cache: 'no-store'
           });
           const resultsData = await resultsResponse.json();
+          console.log('Results API response:', resultsData);
 
           if (!resultsResponse.ok) {
+            console.error('Results API error:', resultsData.error);
             throw new Error(resultsData.error || 'Failed to get scan results');
           }
 
+          console.log('Setting scan results:', resultsData.data);
           setScanResults(resultsData.data);
           setIsLoading(false);
         } else if (data.data.status === 'failed') {
@@ -76,6 +120,7 @@ export default function DashboardPage() {
           setTimeout(checkScanStatus, 2000);
         }
       } catch (error: any) {
+        console.error('Error fetching scan data:', error);
         setError(error.message || 'An error occurred');
         setIsLoading(false);
       }
@@ -116,7 +161,10 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 ) : scanResults ? (
-                  <ScanResults results={scanResults} isPremium={isPremium} />
+                  <>
+                    {console.log('Rendering ScanResults component with:', scanResults)}
+                    <ScanResults results={scanResults} isPremium={isPremium} />
+                  </>
                 ) : (
                   <div className="rounded-lg bg-gray-50 p-4 text-center">
                     <p className="text-lg text-gray-600">No scan results found.</p>

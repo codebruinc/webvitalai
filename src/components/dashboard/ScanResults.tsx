@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import PrioritizedRecommendations from './PrioritizedRecommendations';
 import IndustryBenchmarks from './IndustryBenchmarks';
 import { generateScorecard } from '@/services/scorecardService';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface ScanResultsProps {
   results: {
@@ -67,6 +69,9 @@ export default function ScanResults({ results, isPremium }: ScanResultsProps) {
   const router = useRouter();
   const [generatingScorecard, setGeneratingScorecard] = useState(false);
   const [scorecardError, setScorecardError] = useState<string | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   // Helper function to get color based on score
   const getScoreColor = (score: number) => {
@@ -143,7 +148,7 @@ export default function ScanResults({ results, isPremium }: ScanResultsProps) {
   };
 
   return (
-    <div className="bg-white shadow rounded-lg overflow-hidden">
+    <div className="bg-white shadow rounded-lg overflow-hidden" ref={reportRef}>
       <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center">
           <div>
@@ -156,45 +161,101 @@ export default function ScanResults({ results, isPremium }: ScanResultsProps) {
           </div>
           <div className="mt-4 sm:mt-0 flex space-x-2">
             {isPremium && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    setGeneratingScorecard(true);
-                    setScorecardError(null);
-                    const scorecard = await generateScorecard(results.id);
-                    if (scorecard) {
-                      router.push(`/scorecard/${scorecard.shareCode}`);
-                    } else {
-                      setScorecardError('Failed to generate scorecard');
+              <>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setGeneratingPdf(true);
+                      setPdfError(null);
+                      
+                      if (reportRef.current) {
+                        const canvas = await html2canvas(reportRef.current, {
+                          scale: 2,
+                          logging: false,
+                          useCORS: true
+                        });
+                        
+                        const imgData = canvas.toDataURL('image/png');
+                        const pdf = new jsPDF({
+                          orientation: 'portrait',
+                          unit: 'mm',
+                          format: 'a4'
+                        });
+                        
+                        const imgWidth = 210; // A4 width in mm
+                        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                        
+                        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+                        pdf.save(`${results.url.replace(/https?:\/\//i, '').replace(/[^a-z0-9]/gi, '-')}-report.pdf`);
+                      }
+                    } catch (error) {
+                      console.error('Error generating PDF:', error);
+                      setPdfError('An error occurred while generating the PDF');
+                    } finally {
+                      setGeneratingPdf(false);
                     }
-                  } catch (error) {
-                    console.error('Error generating scorecard:', error);
-                    setScorecardError('An error occurred while generating the scorecard');
-                  } finally {
-                    setGeneratingScorecard(false);
-                  }
-                }}
-                disabled={generatingScorecard}
-                className="inline-flex items-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
-              >
-                {generatingScorecard ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-5 w-5 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
-                    </svg>
-                    Share Scorecard
-                  </>
-                )}
-              </button>
+                  }}
+                  disabled={generatingPdf}
+                  className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                >
+                  {generatingPdf ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-5 w-5 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clipRule="evenodd" />
+                      </svg>
+                      Download PDF
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setGeneratingScorecard(true);
+                      setScorecardError(null);
+                      const scorecard = await generateScorecard(results.id);
+                      if (scorecard) {
+                        router.push(`/scorecard/${scorecard.shareCode}`);
+                      } else {
+                        setScorecardError('Failed to generate scorecard');
+                      }
+                    } catch (error) {
+                      console.error('Error generating scorecard:', error);
+                      setScorecardError('An error occurred while generating the scorecard');
+                    } finally {
+                      setGeneratingScorecard(false);
+                    }
+                  }}
+                  disabled={generatingScorecard}
+                  className="inline-flex items-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
+                >
+                  {generatingScorecard ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-5 w-5 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
+                      </svg>
+                      Share Scorecard
+                    </>
+                  )}
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -252,7 +313,7 @@ export default function ScanResults({ results, isPremium }: ScanResultsProps) {
           )}
         </div>
 
-        {scorecardError && (
+        {(scorecardError || pdfError) && (
           <div className="mt-4 rounded-md bg-red-50 p-4">
             <div className="flex">
               <div className="flex-shrink-0">
@@ -261,7 +322,7 @@ export default function ScanResults({ results, isPremium }: ScanResultsProps) {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">{scorecardError}</h3>
+                <h3 className="text-sm font-medium text-red-800">{scorecardError || pdfError}</h3>
               </div>
             </div>
           </div>

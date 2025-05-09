@@ -58,10 +58,10 @@ export async function generateScorecard(scanId: string): Promise<ScorecardData |
     }
 
     // Extract scores
-    const performanceScore = metrics.find(m => m.name === 'Performance Score')?.value || 0;
-    const accessibilityScore = metrics.find(m => m.name === 'Accessibility Score')?.value || 0;
-    const seoScore = metrics.find(m => m.name === 'SEO Score')?.value || 0;
-    const securityScore = metrics.find(m => m.name === 'Security Score')?.value || 0;
+    const performanceScore = metrics.find((m: any) => m.name === 'Performance Score')?.value || 0;
+    const accessibilityScore = metrics.find((m: any) => m.name === 'Accessibility Score')?.value || 0;
+    const seoScore = metrics.find((m: any) => m.name === 'SEO Score')?.value || 0;
+    const securityScore = metrics.find((m: any) => m.name === 'Security Score')?.value || 0;
     const securityGrade = getSecurityGrade(securityScore);
 
     // Generate a unique share code
