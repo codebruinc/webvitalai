@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase, supabaseServiceRole } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { useSubscription } from '@/hooks/useSubscription';
 
 interface Website {
@@ -32,19 +32,15 @@ export default function DashboardContent() {
   const router = useRouter();
   const { subscription, loading: subscriptionLoading, isPremium } = useSubscription();
 
-  // Helper function to create a default scan object for websites without scans
-  const createDefaultScan = (website: Website) => {
-    return {
-      id: 'default-' + website.id,
-      status: 'completed',
-      created_at: new Date().toISOString(),
-      performance_score: 50,
-      accessibility_score: 50,
-      seo_score: 50,
-      security_score: 50
-    };
+  // Helper function to check if a website has a completed scan with metrics
+  const hasCompletedScanWithMetrics = (website: Website) => {
+    return website.latest_scan && 
+           website.latest_scan.status === 'completed' && 
+           (website.latest_scan.performance_score !== undefined || 
+            website.latest_scan.accessibility_score !== undefined || 
+            website.latest_scan.seo_score !== undefined || 
+            website.latest_scan.security_score !== undefined);
   };
-
 
   const fetchWebsitesData = async () => {
     setIsLoading(true);
@@ -58,171 +54,35 @@ export default function DashboardContent() {
         return;
       }
 
-      // Get websites for the current user
-      const { data: websitesData, error: websitesError } = await supabase
-        .from('websites')
-        .select('id, url, name, description, is_active')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      if (websitesError) {
-        throw new Error(websitesError.message);
-      }
-
-      // Get the latest scan for each website
-      const websitesWithScans = await Promise.all(
-        (websitesData || []).map(async (website: any) => {
-          console.log(`Fetching scan data for website ${website.id} (${website.url})`);
-          
-          try {
-            // Always use service role client to bypass RLS policies
-            // Add debug logging
-            console.log(`DEBUG: Fetching scans for website_id=${website.id}`);
-            
-            // Force cache refresh by adding a timestamp parameter
-            const timestamp = new Date().getTime();
-            const { data: scansData, error: scanError } = await supabaseServiceRole
-              .from('scans')
-              .select('*')  // Select all columns for debugging
-              .eq('website_id', website.id)
-              .order('created_at', { ascending: false })
-              .limit(5);  // Get more scans for debugging
-
-            console.log(`Scan data response for website ${website.id}:`, {
-              scansData,
-              hasData: scansData && scansData.length > 0,
-              scanCount: scansData ? scansData.length : 0,
-              error: scanError
-            });
-
-            if (scanError) {
-              console.error(`Error fetching scan for website ${website.id}:`, scanError);
-              // Continue with no scan data instead of failing
-            }
-
-            // Check if we have any scan data
-            const scanData = scansData && scansData.length > 0 ? scansData[0] : null;
-            
-            // Debug the scan data
-            console.log(`DEBUG: First scan data for website ${website.id}:`, scanData);
-            
-            let latestScan = scanData ? {
-              id: scanData.id,
-              status: scanData.status,
-              created_at: scanData.created_at,
-              performance_score: undefined as number | undefined,
-              accessibility_score: undefined as number | undefined,
-              seo_score: undefined as number | undefined,
-              security_score: undefined as number | undefined,
-            } : undefined;
-            
-            // Debug the latest scan object
-            console.log(`DEBUG: Latest scan object for website ${website.id}:`, latestScan);
-
-            // If there's a scan, get the scores
-            if (latestScan && latestScan.status === 'completed') {
-              console.log(`Fetching metrics for scan ${latestScan.id} (status: ${latestScan.status})`);
-              
-              try {
-                // Debug the metrics query
-                console.log(`DEBUG: Querying metrics for scan_id=${latestScan.id}`);
-                
-                const { data: metricsData, error: metricsError } = await supabaseServiceRole
-                  .from('metrics')
-                  .select('*')  // Select all columns for debugging
-                  .eq('scan_id', latestScan.id);
-                  // Don't filter metrics for debugging
-                  //.in('name', ['Performance Score', 'Accessibility Score', 'SEO Score', 'Security Score']);
-
-                console.log(`Metrics data response for scan ${latestScan.id}:`, {
-                  metricsData,
-                  hasData: metricsData && metricsData.length > 0,
-                  metricCount: metricsData ? metricsData.length : 0,
-                  error: metricsError
-                });
-
-                if (metricsError) {
-                  console.error(`Error fetching metrics for scan ${latestScan.id}:`, metricsError);
-                  // Continue with no metrics instead of failing
-                } else if (metricsData && metricsData.length > 0) {
-                  console.log(`DEBUG: Processing ${metricsData.length} metrics for scan ${latestScan.id}`);
-                  
-                  // Log all metrics for debugging
-                  metricsData.forEach((metric, index) => {
-                    console.log(`DEBUG: Metric ${index + 1}:`, metric);
-                  });
-                  
-                  metricsData.forEach(metric => {
-                    if (metric.name === 'Performance Score') {
-                      latestScan!.performance_score = metric.value;
-                      console.log(`DEBUG: Set performance_score to ${metric.value}`);
-                    } else if (metric.name === 'Accessibility Score') {
-                      latestScan!.accessibility_score = metric.value;
-                      console.log(`DEBUG: Set accessibility_score to ${metric.value}`);
-                    } else if (metric.name === 'SEO Score') {
-                      latestScan!.seo_score = metric.value;
-                      console.log(`DEBUG: Set seo_score to ${metric.value}`);
-                    } else if (metric.name === 'Security Score') {
-                      latestScan!.security_score = metric.value;
-                      console.log(`DEBUG: Set security_score to ${metric.value}`);
-                    }
-                  });
-                  
-                  // Log the final latestScan object after processing metrics
-                  console.log(`DEBUG: Final latestScan object after processing metrics:`, latestScan);
-                }
-              } catch (metricsError) {
-                console.error(`Error processing metrics for scan ${latestScan.id}:`, metricsError);
-                // Continue with no metrics instead of failing
-              }
-            }
-            
-            const result = {
-              ...website,
-              latest_scan: latestScan,
-            };
-            
-            // Debug the final website object with latest_scan
-            console.log(`DEBUG: Final website object for ${website.id}:`, {
-              id: result.id,
-              url: result.url,
-              name: result.name,
-              has_latest_scan: !!result.latest_scan,
-              latest_scan_status: result.latest_scan ? result.latest_scan.status : 'none',
-              has_scores: result.latest_scan ? {
-                performance: result.latest_scan.performance_score !== undefined,
-                accessibility: result.latest_scan.accessibility_score !== undefined,
-                seo: result.latest_scan.seo_score !== undefined,
-                security: result.latest_scan.security_score !== undefined
-              } : 'no scan'
-            });
-            
-            return result;
-          } catch (error) {
-            console.error(`Error processing website ${website.id}:`, error);
-            // Return the website without scan data instead of failing
-            return {
-              ...website,
-              latest_scan: undefined,
-            };
-          }
-        })
-      );
-
-      // Debug the final websites array
-      console.log(`DEBUG: Final websites array (${websitesWithScans.length} websites):`,
-        websitesWithScans.map(website => ({
-          id: website.id,
-          url: website.url,
-          name: website.name,
-          has_latest_scan: !!website.latest_scan,
-          latest_scan_status: website.latest_scan ? website.latest_scan.status : 'none'
-        }))
-      );
+      // Use the server-side API endpoint to fetch websites with scans and metrics
+      console.log('Fetching dashboard data for user:', session.user.id);
       
-      setWebsites(websitesWithScans);
+      const response = await fetch(`/api/dashboard?userId=${session.user.id}`, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        cache: 'no-store'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch dashboard data');
+      }
+      
+      const { data: websitesData } = await response.json();
+      console.log(`Fetched ${websitesData?.length || 0} websites with scans from API`);
+      
+      if (websitesData && websitesData.length > 0) {
+        setWebsites(websitesData);
+      } else {
+        console.log('No websites found for user:', session.user.id);
+        setWebsites([]);
+      }
+      
       setIsLoading(false);
     } catch (error: any) {
+      console.error('Error fetching dashboard data:', error);
       setError(error.message);
       setIsLoading(false);
     }
@@ -242,10 +102,10 @@ export default function DashboardContent() {
         has_latest_scan: !!website.latest_scan,
         latest_scan_status: website.latest_scan ? website.latest_scan.status : 'none',
         has_scores: website.latest_scan ? {
-          performance: (website.latest_scan || createDefaultScan(website)).performance_score !== undefined,
-          accessibility: (website.latest_scan || createDefaultScan(website)).accessibility_score !== undefined,
-          seo: (website.latest_scan || createDefaultScan(website)).seo_score !== undefined,
-          security: (website.latest_scan || createDefaultScan(website)).security_score !== undefined
+          performance: website.latest_scan.performance_score !== undefined,
+          accessibility: website.latest_scan.accessibility_score !== undefined,
+          seo: website.latest_scan.seo_score !== undefined,
+          security: website.latest_scan.security_score !== undefined
         } : 'no scan'
       })));
     }
@@ -264,7 +124,7 @@ export default function DashboardContent() {
   const handleViewResults = (scanId: string) => {
     console.log('handleViewResults called with scanId:', scanId);
     
-    if (!scanId || scanId.startsWith('default-')) {
+    if (!scanId) {
       console.warn('Invalid scan ID:', scanId);
       return;
     }
@@ -308,14 +168,19 @@ export default function DashboardContent() {
     
     setIsDeleting(true);
     try {
-      // Delete the website from the database - use service role client to bypass RLS
-      const { error } = await supabaseServiceRole
-        .from('websites')
-        .delete()
-        .eq('id', websiteToDelete.id);
+      // Delete the website using a fetch request to a server-side API endpoint
+      // This ensures we use the service role key on the server side
+      const response = await fetch(`/api/websites/${websiteToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
       
-      if (error) {
-        throw new Error(error.message);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete website');
       }
       
       // Update the local state to remove the deleted website
@@ -441,53 +306,55 @@ export default function DashboardContent() {
               </h3>
               <p className="mt-1 text-sm text-gray-500 truncate">{website.url}</p>
               
-              {(website.latest_scan || createDefaultScan(website)) ? (
+              {website.latest_scan ? (
                 <div className="mt-4">
                   <p className="text-sm text-gray-500">
-                    Last scanned: {new Date((website.latest_scan || createDefaultScan(website)).created_at).toLocaleDateString()}
+                    Last scanned: {new Date(website.latest_scan.created_at).toLocaleDateString()}
                   </p>
                   
-                  {(website.latest_scan || createDefaultScan(website)) ? (
+                  {website.latest_scan.status === 'completed' && (
                     <div className="mt-2 grid grid-cols-2 gap-2">
-                      {(website.latest_scan || createDefaultScan(website)).performance_score !== undefined && (
+                      {website.latest_scan.performance_score !== undefined && (
                         <div className="rounded-md bg-gray-50 p-2">
                           <p className="text-xs text-gray-500">Performance</p>
                           <p className="text-lg font-semibold text-gray-900">
-                            {Math.round((website.latest_scan || createDefaultScan(website)).performance_score || 0)}
+                            {Math.round(website.latest_scan.performance_score || 0)}
                           </p>
                         </div>
                       )}
                       
-                      {(website.latest_scan || createDefaultScan(website)).accessibility_score !== undefined && (
+                      {website.latest_scan.accessibility_score !== undefined && (
                         <div className="rounded-md bg-gray-50 p-2">
                           <p className="text-xs text-gray-500">Accessibility</p>
                           <p className="text-lg font-semibold text-gray-900">
-                            {Math.round((website.latest_scan || createDefaultScan(website)).accessibility_score || 0)}
+                            {Math.round(website.latest_scan.accessibility_score || 0)}
                           </p>
                         </div>
                       )}
                       
-                      {(website.latest_scan || createDefaultScan(website)).seo_score !== undefined && (
+                      {website.latest_scan.seo_score !== undefined && (
                         <div className="rounded-md bg-gray-50 p-2">
                           <p className="text-xs text-gray-500">SEO</p>
                           <p className="text-lg font-semibold text-gray-900">
-                            {Math.round((website.latest_scan || createDefaultScan(website)).seo_score || 0)}
+                            {Math.round(website.latest_scan.seo_score || 0)}
                           </p>
                         </div>
                       )}
                       
-                      {(website.latest_scan || createDefaultScan(website)).security_score !== undefined && (
+                      {website.latest_scan.security_score !== undefined && (
                         <div className="rounded-md bg-gray-50 p-2">
                           <p className="text-xs text-gray-500">Security</p>
                           <p className="text-lg font-semibold text-gray-900">
-                            {Math.round((website.latest_scan || createDefaultScan(website)).security_score || 0)}
+                            {Math.round(website.latest_scan.security_score || 0)}
                           </p>
                         </div>
                       )}
                     </div>
-                  ) : (
+                  )}
+                  
+                  {website.latest_scan.status !== 'completed' && (
                     <p className="mt-2 text-sm font-medium text-amber-600">
-                      Status: {(website.latest_scan || createDefaultScan(website)).status}
+                      Status: {website.latest_scan.status}
                     </p>
                   )}
                   
@@ -500,20 +367,16 @@ export default function DashboardContent() {
                       Scan Again
                     </button>
                     
-                    {(website.latest_scan || createDefaultScan(website)).status === 'completed' && (
+                    {website.latest_scan.status === 'completed' && (
                       <button
                         type="button"
                         onClick={() => {
-                          // Only use the actual scan ID from the database, not the default one
                           console.log('View Results button clicked for website:', website.url);
                           console.log('Website latest_scan:', website.latest_scan);
                           
-                          const scanId = website.latest_scan ? website.latest_scan.id : null;
-                          console.log('Extracted scanId:', scanId);
-                          
-                          if (scanId) {
-                            console.log('Calling handleViewResults with scanId:', scanId);
-                            handleViewResults(scanId);
+                          if (website.latest_scan && website.latest_scan.id) {
+                            console.log('Calling handleViewResults with scanId:', website.latest_scan.id);
+                            handleViewResults(website.latest_scan.id);
                           } else {
                             console.warn('No valid scan ID found for website:', website.url);
                           }
